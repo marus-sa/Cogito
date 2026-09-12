@@ -1,0 +1,24 @@
+{
+  "name": "cogito-light-hearts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "cd server && .venv/bin/python app.py",
+    "start": "gunicorn --chdir server --bind 0.0.0.0:${PORT:-5000} app:app",
+    "test:api": "cd server && .venv/bin/python test_api.py",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "lucide-vue-next": "latest",
+    "pinia": "latest",
+    "vue": "latest",
+    "vue-router": "latest"
+  },
+  "devDependencies": {
+    "vite": "latest"
+  }
+}

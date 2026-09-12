@@ -1,0 +1,12 @@
+node_modules/
+dist/
+server/.venv/
+server/data/
+server/__pycache__/
+work/
+outputs/
+.openai/
+examples/
+.DS_Store
+.env
+*.pyc
