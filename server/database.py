@@ -56,7 +56,12 @@ def connect_db():
     return db
 
 
-def make_user(first_name, last_name, email, role, grade="", subjects="", time=""):
+def is_production():
+    return os.environ.get("FLASK_ENV") == "production"
+
+
+def make_demo_user(first_name, last_name, email, role, grade="", subjects="", time=""):
+    """Учётная запись только для локального демо-режима."""
     return (
         first_name,
         last_name,
@@ -242,7 +247,10 @@ def start_database():
     upgrade_old_database(db)
     for statement in INDEXES:
         db.execute(statement)
-    seed_demo_data(db)
+    if is_production():
+        seed_production_admin(db)
+    else:
+        seed_demo_data(db)
     db.commit()
     db.close()
 
@@ -252,17 +260,56 @@ def get_user_id(db, email):
     return row["id"] if row else None
 
 
+def seed_production_admin(db):
+    """Создаёт первого администратора только в новой боевой базе.
+
+    Пароль приходит из переменной окружения Render и никогда не попадает
+    в репозиторий или в базу в открытом виде.
+    """
+    has_users = db.execute("SELECT id FROM users LIMIT 1").fetchone()
+    if has_users:
+        return
+
+    email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    password = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "")
+    if not email or not password:
+        raise RuntimeError(
+            "Для первого запуска в production задайте ADMIN_EMAIL и ADMIN_BOOTSTRAP_PASSWORD."
+        )
+    if len(password) < 12:
+        raise RuntimeError("ADMIN_BOOTSTRAP_PASSWORD должен содержать не менее 12 символов.")
+
+    db.execute(
+        """INSERT INTO users
+        (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "Администратор",
+            "Cogito",
+            email,
+            generate_password_hash(password),
+            "admin",
+            "active",
+            "",
+            "Управление проектом",
+            "",
+            "",
+            "",
+        ),
+    )
+
+
 def seed_demo_data(db):
     has_users = db.execute("SELECT id FROM users LIMIT 1").fetchone()
     if has_users:
         return
 
     demo_users = [
-        make_user("Анна", "Смирнова", "anna@cogito.ru", "student", "7", "Математика", "Пн, Ср · после 17:00"),
-        make_user("Мария", "Иванова", "maria@cogito.ru", "tutor", "11", "Математика, информатика", "Пн, Ср · после 16:00"),
-        make_user("Елена", "Смирнова", "elena@cogito.ru", "parent", "", "Математика", "Вечером"),
-        make_user("Алексей", "Петров", "alexey@cogito.ru", "mentor", "", "Координация", "Будни"),
-        make_user("Софья", "Орлова", "sofia@cogito.ru", "admin", "", "Управление проектом", "Будни"),
+        make_demo_user("Анна", "Смирнова", "anna@cogito.ru", "student", "7", "Математика", "Пн, Ср · после 17:00"),
+        make_demo_user("Мария", "Иванова", "maria@cogito.ru", "tutor", "11", "Математика, информатика", "Пн, Ср · после 16:00"),
+        make_demo_user("Елена", "Смирнова", "elena@cogito.ru", "parent", "", "Математика", "Вечером"),
+        make_demo_user("Алексей", "Петров", "alexey@cogito.ru", "mentor", "", "Координация", "Будни"),
+        make_demo_user("Софья", "Орлова", "sofia@cogito.ru", "admin", "", "Управление проектом", "Будни"),
     ]
     db.executemany(
         """INSERT INTO users

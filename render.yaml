@@ -12,6 +12,10 @@ services:
           property: connectionString
       - key: FLASK_ENV
         value: production
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        sync: false
 
 databases:
   - name: cogito-light-hearts-db

@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import database
+from werkzeug.security import check_password_hash
 
 
 def login(app, email, role, password="cogito123"):
@@ -87,5 +89,32 @@ with TemporaryDirectory() as folder:
     pending_tutor = next(item for item in pending.json["items"] if item["email"] == "new.tutor@example.ru")
     assert admin.patch(f"/api/admin/users/{pending_tutor['id']}", json={"accountStatus": "active"}).status_code == 200
     assert login(app, "new.tutor@example.ru", "tutor", "long-enough-password").get("/api/auth/me").status_code == 200
+
+
+saved_environment = {key: os.environ.get(key) for key in ["FLASK_ENV", "ADMIN_EMAIL", "ADMIN_BOOTSTRAP_PASSWORD", "DATABASE_URL"]}
+try:
+    os.environ["FLASK_ENV"] = "production"
+    os.environ["ADMIN_EMAIL"] = "owner@example.ru"
+    os.environ["ADMIN_BOOTSTRAP_PASSWORD"] = "a-strong-private-password"
+    os.environ.pop("DATABASE_URL", None)
+
+    with TemporaryDirectory() as folder:
+        database.DATA_FOLDER = Path(folder)
+        database.DATABASE_FILE = database.DATA_FOLDER / "production.db"
+        database.start_database()
+        db = database.connect_db()
+        users = db.execute("SELECT email, password_hash, role FROM users").fetchall()
+        db.close()
+
+        assert len(users) == 1
+        assert users[0]["email"] == "owner@example.ru"
+        assert users[0]["role"] == "admin"
+        assert check_password_hash(users[0]["password_hash"], "a-strong-private-password")
+finally:
+    for key, value in saved_environment.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 print("API работает: сессии в защищённых cookie, роли, заявки и разделение данных.")
