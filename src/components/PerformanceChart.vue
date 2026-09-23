@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-const props = defineProps({ values: { type: Array, default: () => [55, 62, 59, 70, 68, 76] }, labels: { type: Array, default: () => ['1 июл', '8 июл', '15 июл', '22 июл', '29 июл', '5 авг'] }, color: { type: String, default: '#8267c7' } })
+const props = defineProps({ values: { type: Array, default: () => [] }, labels: { type: Array, default: () => [] }, color: { type: String, default: '#8267c7' } })
 const points = computed(() => props.values.map((value, index) => ({ left: `${(index / Math.max(1, props.values.length - 1)) * 100}%`, top: `${100 - value}%`, value })))
 const links = computed(() => props.values.slice(0, -1).map((value, index) => {
   const next = props.values[index + 1]

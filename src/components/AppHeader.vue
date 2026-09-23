@@ -26,7 +26,7 @@ async function openNotification(notification) {
     messages.showToast(error.message, 'error')
   }
   notificationsOpen.value = false
-  router.push('/dashboard')
+  router.push(notification.title === 'Новая заявка репетитора' ? '/reports' : '/dashboard')
 }
 
 async function readAll() {
