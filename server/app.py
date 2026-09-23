@@ -19,6 +19,9 @@ PROJECT_FOLDER = Path(__file__).resolve().parent.parent
 FRONTEND_FOLDER = PROJECT_FOLDER / "dist"
 COOKIE_NAME = "cogito_session"
 ADMIN_RESET_TOKEN_ENV = "ADMIN_RESET_TOKEN"
+ADMIN_RESET_AUTH_COOKIE = "cogito_admin_reset"
+ADMIN_RESET_AUTH_COOKIE_PATH = "/api/auth/admin-password-reset"
+ADMIN_RESET_AUTH_SECONDS = 15 * 60
 PUBLIC_REGISTER_ROLES = {"student", "parent", "tutor"}
 ROLE_LABELS = {
     "student": "Ученик",
@@ -100,6 +103,45 @@ def reset_token_matches(submitted_token, configured_token):
         hashlib.sha256(submitted_token.strip().encode("utf-8")).digest(),
         hashlib.sha256(configured_token.encode("utf-8")).digest(),
     )
+
+
+def reset_authorization_is_valid():
+    """Проверяет короткую HTTP-only сессию для уже подтверждённого кода."""
+    authorization = request.cookies.get(ADMIN_RESET_AUTH_COOKIE, "")
+    if not authorization:
+        return False
+
+    db = connect_db()
+    try:
+        row = db.execute(
+            """SELECT 1 FROM admin_password_reset_authorizations
+            WHERE token_fingerprint = ? AND expires_at > ?""",
+            (reset_token_fingerprint(authorization), datetime.now(timezone.utc).isoformat()),
+        ).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        db.close()
+
+
+def set_reset_authorization_cookie(response, authorization):
+    """Сохраняет подтверждение кода в браузере, не раскрывая его JavaScript."""
+    response.set_cookie(
+        ADMIN_RESET_AUTH_COOKIE,
+        authorization,
+        max_age=ADMIN_RESET_AUTH_SECONDS,
+        httponly=True,
+        secure=is_production(),
+        samesite="Strict",
+        path=ADMIN_RESET_AUTH_COOKIE_PATH,
+    )
+    return response
+
+
+def clear_reset_authorization_cookie(response):
+    response.delete_cookie(ADMIN_RESET_AUTH_COOKIE, path=ADMIN_RESET_AUTH_COOKIE_PATH)
+    return response
 
 
 def admin_reset_error(status=403):
@@ -462,6 +504,38 @@ def local_admin_setup():
     return set_session_cookie(response, create_session(user["id"])), 201
 
 
+@app.post("/api/auth/admin-password-reset/authorize")
+def authorize_admin_password_reset():
+    """Меняет верный код на короткую защищённую сессию для формы сброса."""
+    configured_token = configured_admin_reset_token()
+    submitted_token = get_data().get("token")
+    if not configured_token or not reset_token_matches(submitted_token, configured_token):
+        return admin_reset_error()
+    if not admin_reset_available(configured_token):
+        return admin_reset_error()
+
+    authorization = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ADMIN_RESET_AUTH_SECONDS)).isoformat()
+    db = connect_db()
+    try:
+        # Держим только одну короткую сессию: повторный выпуск кода сразу
+        # отменяет предыдущую форму восстановления.
+        db.execute("DELETE FROM admin_password_reset_authorizations")
+        db.execute(
+            """INSERT INTO admin_password_reset_authorizations
+            (token_fingerprint, expires_at) VALUES (?, ?)""",
+            (reset_token_fingerprint(authorization), expires_at),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        app.logger.exception("Не удалось подтвердить код восстановления администратора")
+        return admin_reset_error()
+    finally:
+        db.close()
+    return set_reset_authorization_cookie(jsonify({"authorized": True}), authorization)
+
+
 @app.route("/api/auth/admin-password-reset", methods=["GET", "POST"])
 def admin_password_reset():
     """Одноразово возвращает владельцу доступ к активному администратору.
@@ -474,7 +548,11 @@ def admin_password_reset():
     """
     configured_token = configured_admin_reset_token()
     if request.method == "GET":
-        return jsonify({"available": admin_reset_available(configured_token)})
+        available = admin_reset_available(configured_token)
+        result = {"available": available}
+        if available and reset_authorization_is_valid():
+            result["authorized"] = True
+        return jsonify(result)
     if not configured_token:
         return admin_reset_error(404)
 
@@ -482,7 +560,8 @@ def admin_password_reset():
     submitted_token = data.get("token")
     email = data.get("email")
     new_password = data.get("newPassword")
-    if not reset_token_matches(submitted_token, configured_token):
+    authorized = reset_authorization_is_valid()
+    if not authorized and not reset_token_matches(submitted_token, configured_token):
         return admin_reset_error()
     if not isinstance(email, str) or not isinstance(new_password, str):
         return admin_reset_error()
@@ -506,6 +585,17 @@ def admin_password_reset():
         if len(admins) != 1:
             return admin_reset_error()
         admin = admins[0]
+        fingerprint = reset_token_fingerprint(configured_token)
+
+        # Не оставляем повторное применение кода на откуп ошибке уникальности:
+        # так оно выглядит для владельца как обычный безопасный отказ, а не
+        # как внутренняя ошибка сервера.
+        already_used = db.execute(
+            "SELECT 1 FROM admin_password_reset_tokens WHERE token_fingerprint = ?",
+            (fingerprint,),
+        ).fetchone()
+        if already_used:
+            return admin_reset_error()
 
         # Нельзя перезаписать почту другого человека. В этом случае владелец
         # выбирает свободную почту, а токен остаётся действительным.
@@ -513,7 +603,6 @@ def admin_password_reset():
         if occupied and occupied["id"] != admin["id"]:
             return jsonify({"error": "Эта почта уже используется. Укажите другую для входа администратора."}), 409
 
-        fingerprint = reset_token_fingerprint(configured_token)
         # PRIMARY KEY не даёт применить один код дважды. Вставка, смена
         # почты и пароля, а также закрытие старых сессий происходят в одной
         # транзакции.
@@ -522,6 +611,7 @@ def admin_password_reset():
             (token_fingerprint, admin_user_id, used_at) VALUES (?, ?, ?)""",
             (fingerprint, admin["id"], datetime.now(timezone.utc).isoformat()),
         )
+        db.execute("DELETE FROM admin_password_reset_authorizations")
         changed = db.execute(
             """UPDATE users SET email = ?, password_hash = ?
             WHERE id = ? AND role = 'admin' AND account_status = 'active'""",
@@ -533,10 +623,11 @@ def admin_password_reset():
         db.commit()
     except Exception:
         db.rollback()
+        app.logger.exception("Не удалось выполнить сброс доступа администратора")
         return admin_reset_error()
     finally:
         db.close()
-    return jsonify({"ok": True})
+    return clear_reset_authorization_cookie(jsonify({"ok": True}))
 
 
 @app.post("/api/auth/login")
