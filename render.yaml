@@ -16,6 +16,10 @@ services:
         sync: false
       - key: ADMIN_BOOTSTRAP_PASSWORD
         sync: false
+      # Заполняется вручную только на время аварийного восстановления
+      # администратора. Значение не попадает в Git и не выводится сайту.
+      - key: ADMIN_RESET_TOKEN
+        sync: false
 
 databases:
   - name: cogito-light-hearts-db
