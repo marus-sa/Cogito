@@ -464,12 +464,13 @@ def local_admin_setup():
 
 @app.route("/api/auth/admin-password-reset", methods=["GET", "POST"])
 def admin_password_reset():
-    """Одноразово меняет пароль существующего активного администратора.
+    """Одноразово возвращает владельцу доступ к активному администратору.
 
     Этот аварийный путь включается только явной переменной окружения на
     хостинге. GET ничего не раскрывает, кроме того, доступна ли форма.
     POST не сообщает, что именно оказалось неверным, чтобы не позволять
-    подбирать почту администратора или проверять использованный код.
+    подбирать код или проверять использованный код. Почта из формы становится
+    новой почтой входа: прежняя служебная почта могла быть недоступна владельцу.
     """
     configured_token = configured_admin_reset_token()
     if request.method == "GET":
@@ -489,9 +490,12 @@ def admin_password_reset():
         return jsonify({"error": "Новый пароль администратора должен содержать не менее 12 символов"}), 400
 
     # Сброс не умеет выбирать между администраторами: он работает, только
-    # когда в базе ровно один активный админ. Почта из формы подтверждает
-    # именно эту единственную учётную запись.
+    # когда в базе ровно один активный админ. Но прежняя почта владельцу
+    # неизвестна, поэтому указанная почта становится новой почтой входа.
     submitted_email = email.strip().lower()
+    if not re.match(r"^\S+@\S+\.\S+$", submitted_email):
+        return jsonify({"error": "Укажите корректную электронную почту"}), 400
+
     db = connect_db()
     try:
         admins = db.execute(
@@ -502,23 +506,26 @@ def admin_password_reset():
         if len(admins) != 1:
             return admin_reset_error()
         admin = admins[0]
-        if not hmac.compare_digest(
-            submitted_email.encode("utf-8"), admin["email"].strip().lower().encode("utf-8")
-        ):
-            return admin_reset_error()
+
+        # Нельзя перезаписать почту другого человека. В этом случае владелец
+        # выбирает свободную почту, а токен остаётся действительным.
+        occupied = db.execute("SELECT id FROM users WHERE email = ?", (submitted_email,)).fetchone()
+        if occupied and occupied["id"] != admin["id"]:
+            return jsonify({"error": "Эта почта уже используется. Укажите другую для входа администратора."}), 409
 
         fingerprint = reset_token_fingerprint(configured_token)
         # PRIMARY KEY не даёт применить один код дважды. Вставка, смена
-        # пароля и закрытие старых сессий происходят в одной транзакции.
+        # почты и пароля, а также закрытие старых сессий происходят в одной
+        # транзакции.
         db.execute(
             """INSERT INTO admin_password_reset_tokens
             (token_fingerprint, admin_user_id, used_at) VALUES (?, ?, ?)""",
             (fingerprint, admin["id"], datetime.now(timezone.utc).isoformat()),
         )
         changed = db.execute(
-            """UPDATE users SET password_hash = ?
+            """UPDATE users SET email = ?, password_hash = ?
             WHERE id = ? AND role = 'admin' AND account_status = 'active'""",
-            (generate_password_hash(new_password), admin["id"]),
+            (submitted_email, generate_password_hash(new_password), admin["id"]),
         )
         if changed.rowcount != 1:
             raise RuntimeError("Admin account changed during password reset")
