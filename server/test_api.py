@@ -264,8 +264,8 @@ try:
         )
         assert old_session.status_code == 200
 
-        # Неверный код и неподходящая почта не меняют пароль и не расходуют
-        # одноразовый код.
+        # Неверный код и некорректная новая почта не меняют пароль и не
+        # расходуют одноразовый код.
         wrong_token = reset.post(
             "/api/auth/admin-password-reset",
             json={
@@ -275,15 +275,16 @@ try:
             },
         )
         assert wrong_token.status_code == 403
-        wrong_email = reset.post(
+        invalid_email = reset.post(
             "/api/auth/admin-password-reset",
             json={
                 "token": "test-only-one-time-reset-token-123456",
-                "email": "other@example.ru",
+                "email": "not-an-email",
                 "newPassword": "new-secure-password",
             },
         )
-        assert wrong_email.status_code == 403
+        assert invalid_email.status_code == 400
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
 
         # Когда администраторов больше одного, сервер не выбирает цель
         # произвольно и вообще не показывает аварийную форму.
@@ -312,6 +313,34 @@ try:
         db.close()
         assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
 
+        # Новая почта не может перезаписать запись другого пользователя.
+        # Ошибка не расходует код и не меняет старый администраторский пароль.
+        db = database.connect_db()
+        db.execute(
+            """INSERT INTO users
+            (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio)
+            VALUES (?, ?, ?, ?, 'student', 'active', '', '', '', '', '')""",
+            ("Занятый", "Адрес", "occupied@example.ru", generate_password_hash("occupied-password")),
+        )
+        db.commit()
+        db.close()
+        occupied_email = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "test-only-one-time-reset-token-123456",
+                "email": "occupied@example.ru",
+                "newPassword": "new-secure-password",
+            },
+        )
+        assert occupied_email.status_code == 409
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
+        db = database.connect_db()
+        unchanged = db.execute("SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)).fetchone()
+        db.execute("DELETE FROM users WHERE email = ?", ("occupied@example.ru",))
+        db.commit()
+        db.close()
+        assert check_password_hash(unchanged["password_hash"], "a-strong-private-password")
+
         weak_password = reset.post(
             "/api/auth/admin-password-reset",
             json={
@@ -326,7 +355,7 @@ try:
             "/api/auth/admin-password-reset",
             json={
                 "token": "test-only-one-time-reset-token-123456",
-                "email": "OWNER@example.ru",
+                "email": "RECOVERY.OWNER@example.ru",
                 "newPassword": "new-secure-password",
             },
         )
@@ -334,13 +363,17 @@ try:
         assert changed.json == {"ok": True}
         assert reset.get("/api/auth/admin-password-reset").json == {"available": False}
         assert reset.get("/api/auth/me").status_code == 401
-        assert login(app, "owner@example.ru", "admin", "new-secure-password").get("/api/auth/me").status_code == 200
+        assert reset.post(
+            "/api/auth/login",
+            json={"email": "owner@example.ru", "password": "new-secure-password", "role": "admin"},
+        ).status_code == 400
+        assert login(app, "recovery.owner@example.ru", "admin", "new-secure-password").get("/api/auth/me").status_code == 200
 
         db = database.connect_db()
         reset_rows = db.execute(
             "SELECT token_fingerprint, admin_user_id, used_at FROM admin_password_reset_tokens"
         ).fetchall()
-        updated = db.execute("SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)).fetchone()
+        updated = db.execute("SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)).fetchone()
         db.close()
         assert len(reset_rows) == 1
         assert reset_rows[0]["token_fingerprint"] == hashlib.sha256(
@@ -354,13 +387,13 @@ try:
             "/api/auth/admin-password-reset",
             json={
                 "token": "test-only-one-time-reset-token-123456",
-                "email": "owner@example.ru",
+                "email": "recovery.owner@example.ru",
                 "newPassword": "another-secure-password",
             },
         )
         assert reused.status_code == 403
         db = database.connect_db()
-        after_reuse = db.execute("SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)).fetchone()
+        after_reuse = db.execute("SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)).fetchone()
         db.close()
         assert check_password_hash(after_reuse["password_hash"], "new-secure-password")
 finally:
