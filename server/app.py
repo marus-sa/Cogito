@@ -5,19 +5,36 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import Flask, abort, g, jsonify, request, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from database import connect_db, start_database
+from database import connect_db, is_production, start_database
 
 
 PROJECT_FOLDER = Path(__file__).resolve().parent.parent
 FRONTEND_FOLDER = PROJECT_FOLDER / "dist"
 COOKIE_NAME = "cogito_session"
 PUBLIC_REGISTER_ROLES = {"student", "parent", "tutor"}
+ROLE_LABELS = {
+    "student": "Ученик",
+    "tutor": "Репетитор",
+    "parent": "Родитель",
+    "mentor": "Наставник",
+    "admin": "Администратор",
+}
+ROLE_COLORS = {
+    "student": "#b39ddb",
+    "tutor": "#9ebad5",
+    "parent": "#e2b9c7",
+    "mentor": "#a8cdbb",
+    "admin": "#e6c48e",
+}
 
-app = Flask(__name__, static_folder=str(FRONTEND_FOLDER), static_url_path="")
+# Статические файлы отдаём ниже через frontend(). Иначе встроенный маршрут
+# Flask перехватывает адреса Vue, например /register, и возвращает 404.
+app = Flask(__name__, static_folder=None)
 app.config["JSON_AS_ASCII"] = False
 start_database()
 
@@ -37,6 +54,8 @@ def row_to_dict(row):
         item["time"] = item.pop("sent_time")
     if "tutor_initials" in item:
         item["tutorInitials"] = item.pop("tutor_initials")
+    if "video_link" in item:
+        item["videoLink"] = item.pop("video_link")
     if "is_read" in item:
         item["read"] = item.pop("is_read")
     return item
@@ -50,6 +69,34 @@ def goal_to_dict(row):
 
 def get_data():
     return request.get_json(silent=True) or {}
+
+
+def video_link_from(value):
+    """Проверяет необязательную ссылку на запись занятия.
+
+    Разрешаем обычные HTTP(S)-ссылки, включая Google Drive и Яндекс Диск.
+    Это исключает javascript:, data: и file: ссылки, которые нельзя безопасно
+    показывать в интерфейсе.
+    """
+    if value is None or value == "":
+        return None, None
+    if not isinstance(value, str):
+        return None, "Ссылка на видео должна быть текстом."
+
+    link = value.strip()
+    if not link:
+        return None, None
+    if len(link) > 2048 or any(char.isspace() for char in link):
+        return None, "Укажите корректную ссылку на видео (http:// или https://)."
+
+    try:
+        parsed = urlsplit(link)
+    except ValueError:
+        return None, "Укажите корректную ссылку на видео (http:// или https://)."
+
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        return None, "Укажите корректную ссылку на видео (http:// или https://)."
+    return link, None
 
 
 def get_user_from_token():
@@ -87,6 +134,123 @@ def role_error(*allowed_roles):
 
 def full_name(user):
     return f"{user['first_name']} {user['last_name']}"
+
+
+def initials(user):
+    return f"{user['first_name'][:1]}{user['last_name'][:1]}".upper()
+
+
+def chat_user(user):
+    """Безопасная карточка человека для списка контактов и диалогов."""
+    return {
+        "id": user["id"],
+        "name": full_name(user),
+        "initials": initials(user),
+        "role": ROLE_LABELS.get(user["role"], "Участник"),
+        "color": ROLE_COLORS.get(user["role"], "#b39ddb"),
+        "accountStatus": user["account_status"],
+    }
+
+
+def chat_contact_rows(db):
+    """Возвращает только тех, с кем текущий пользователь вправе начать чат."""
+    current_id = g.user["id"]
+    role = g.user["role"]
+
+    if role == "admin":
+        return db.execute(
+            """SELECT * FROM users
+            WHERE id != ? AND account_status IN ('active', 'pending')
+            ORDER BY account_status, first_name, last_name""",
+            (current_id,),
+        ).fetchall()
+
+    contact_ids = set()
+    admin_rows = db.execute(
+        "SELECT id FROM users WHERE role = 'admin' AND account_status = 'active'"
+    ).fetchall()
+    contact_ids.update(row["id"] for row in admin_rows)
+
+    if role == "student":
+        rows = db.execute(
+            "SELECT DISTINCT tutor_id AS id FROM lessons WHERE student_id = ? AND tutor_id IS NOT NULL",
+            (current_id,),
+        ).fetchall()
+        contact_ids.update(row["id"] for row in rows)
+    elif role == "tutor":
+        student_rows = db.execute(
+            "SELECT DISTINCT student_id AS id FROM lessons WHERE tutor_id = ? AND student_id IS NOT NULL",
+            (current_id,),
+        ).fetchall()
+        mentor_rows = db.execute(
+            "SELECT mentor_id AS id FROM tutor_mentors WHERE tutor_id = ?",
+            (current_id,),
+        ).fetchall()
+        contact_ids.update(row["id"] for row in [*student_rows, *mentor_rows])
+    elif role == "parent":
+        child_rows = db.execute(
+            "SELECT student_id AS id FROM parent_students WHERE parent_id = ?",
+            (current_id,),
+        ).fetchall()
+        tutor_rows = db.execute(
+            """SELECT DISTINCT lessons.tutor_id AS id FROM lessons
+            JOIN parent_students ON parent_students.student_id = lessons.student_id
+            WHERE parent_students.parent_id = ? AND lessons.tutor_id IS NOT NULL""",
+            (current_id,),
+        ).fetchall()
+        contact_ids.update(row["id"] for row in [*child_rows, *tutor_rows])
+    elif role == "mentor":
+        rows = db.execute(
+            "SELECT tutor_id AS id FROM tutor_mentors WHERE mentor_id = ?",
+            (current_id,),
+        ).fetchall()
+        contact_ids.update(row["id"] for row in rows)
+
+    contact_ids.discard(current_id)
+    if not contact_ids:
+        return []
+    placeholders = ", ".join("?" for _ in contact_ids)
+    return db.execute(
+        f"SELECT * FROM users WHERE id IN ({placeholders}) AND account_status = 'active' ORDER BY first_name, last_name",
+        tuple(contact_ids),
+    ).fetchall()
+
+
+def conversation_to_dict(db, conversation, current_id):
+    members = db.execute(
+        """SELECT users.* FROM users
+        JOIN conversation_members ON conversation_members.user_id = users.id
+        WHERE conversation_members.conversation_id = ? AND users.id != ?""",
+        (conversation["id"], current_id),
+    ).fetchall()
+    other_people = [chat_user(member) for member in members]
+    last_message = db.execute(
+        "SELECT * FROM messages WHERE dialog_id = ? ORDER BY id DESC LIMIT 1",
+        (conversation["id"],),
+    ).fetchone()
+    unread = db.execute(
+        """SELECT COUNT(*) AS count FROM messages
+        WHERE dialog_id = ? AND sender_id != ? AND is_read = 0""",
+        (conversation["id"], current_id),
+    ).fetchone()["count"]
+
+    if len(other_people) == 1:
+        person = other_people[0]
+    else:
+        person = {
+            "name": conversation["title"] or "Групповой чат",
+            "initials": "ЧТ",
+            "role": "Групповой чат",
+            "color": "#b39ddb",
+            "accountStatus": "active",
+        }
+    return {
+        **person,
+        "id": conversation["id"],
+        "last": last_message["text"] if last_message else "Сообщений пока нет",
+        "time": last_message["sent_time"] if last_message else "",
+        "unread": unread,
+    }
 
 
 def student_scope():
@@ -161,6 +325,16 @@ def user_for_frontend(row):
     return user
 
 
+def local_admin_setup_allowed():
+    """Первого администратора локально создаёт только владелец компьютера.
+
+    На опубликованном сайте этот маршрут недоступен: там первого администратора
+    создают переменные ADMIN_EMAIL и ADMIN_BOOTSTRAP_PASSWORD. Локально доступ
+    закрывается сразу после создания первого админа.
+    """
+    return not is_production() and request.remote_addr in {"127.0.0.1", "::1"}
+
+
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True})
@@ -173,6 +347,60 @@ def add_security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     return response
+
+
+@app.route("/api/setup/local-admin", methods=["GET", "POST"])
+def local_admin_setup():
+    if not local_admin_setup_allowed():
+        return jsonify({"error": "Настройка доступна только на локальном компьютере"}), 403
+
+    db = connect_db()
+    has_admin = db.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+    if request.method == "GET":
+        db.close()
+        return jsonify({"available": not bool(has_admin)})
+    if has_admin:
+        db.close()
+        return jsonify({"error": "Первый администратор уже создан"}), 409
+
+    data = get_data()
+    first_name = data.get("firstName", "").strip()
+    last_name = data.get("lastName", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    if not first_name or not last_name or not re.match(r"^\S+@\S+\.\S+$", email):
+        db.close()
+        return jsonify({"error": "Укажите имя, фамилию и корректную почту"}), 400
+    if len(password) < 12:
+        db.close()
+        return jsonify({"error": "Пароль администратора должен содержать не менее 12 символов"}), 400
+
+    existing_user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    try:
+        if existing_user:
+            # У пользователя уже есть локальный аккаунт: сохраняем его записи,
+            # но назначаем владельцем проекта по его явному действию в этой форме.
+            db.execute(
+                """UPDATE users SET first_name = ?, last_name = ?, password_hash = ?, role = 'admin',
+                account_status = 'active', subjects = 'Управление проектом' WHERE id = ?""",
+                (first_name, last_name, generate_password_hash(password), existing_user["id"]),
+            )
+        else:
+            db.execute(
+                """INSERT INTO users
+                (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio)
+                VALUES (?, ?, ?, ?, 'admin', 'active', '', 'Управление проектом', '', '', '')""",
+                (first_name, last_name, email, generate_password_hash(password)),
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        db.close()
+        return jsonify({"error": "Не удалось создать администратора. Попробуйте ещё раз."}), 500
+    user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    db.close()
+    response = jsonify({"user": user_for_frontend(user)})
+    return set_session_cookie(response, create_session(user["id"])), 201
 
 
 @app.post("/api/auth/login")
@@ -231,6 +459,23 @@ def register():
         db.close()
         return jsonify({"error": "Эта электронная почта уже зарегистрирована"}), 400
     user = db.execute("SELECT * FROM users WHERE email = ?", (data["email"].strip().lower(),)).fetchone()
+    if account_status == "pending":
+        admin_rows = db.execute("SELECT id FROM users WHERE role = 'admin' AND account_status = 'active'").fetchall()
+        for admin in admin_rows:
+            db.execute(
+                """INSERT INTO notifications (user_id, icon, tone, title, text, created_time, is_read)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    admin["id"],
+                    "UsersRound",
+                    "warning",
+                    "Новая заявка репетитора",
+                    f"{full_name(user)} ждёт подтверждения аккаунта.",
+                    "Только что",
+                    0,
+                ),
+            )
+        db.commit()
     db.close()
     if account_status == "pending":
         return jsonify({"user": user_for_frontend(user), "needsApproval": True}), 201
@@ -296,6 +541,46 @@ def admin_users():
         rows = db.execute("SELECT * FROM users ORDER BY id DESC").fetchall()
     db.close()
     return jsonify({"items": [user_for_frontend(row) for row in rows]})
+
+
+@app.get("/api/admin/dashboard")
+@need_login
+def admin_dashboard():
+    """Реальные цифры для главной страницы администратора."""
+    error = role_error("admin")
+    if error:
+        return error
+
+    db = connect_db()
+    students = db.execute(
+        "SELECT COUNT(*) AS count FROM users WHERE role = 'student' AND account_status = 'active'"
+    ).fetchone()["count"]
+    tutors = db.execute(
+        "SELECT COUNT(*) AS count FROM users WHERE role = 'tutor' AND account_status = 'active'"
+    ).fetchone()["count"]
+    lessons = db.execute("SELECT COUNT(*) AS count FROM lessons").fetchone()["count"]
+    pending_applications = db.execute(
+        "SELECT COUNT(*) AS count FROM users WHERE role = 'tutor' AND account_status = 'pending'"
+    ).fetchone()["count"]
+    pending_reviews = db.execute(
+        "SELECT COUNT(*) AS count FROM review_lessons WHERE status = 'Ожидает проверки'"
+    ).fetchone()["count"]
+    subjects = db.execute(
+        """SELECT COALESCE(NULLIF(subject, ''), 'Не указан') AS name, COUNT(*) AS count
+        FROM lessons GROUP BY COALESCE(NULLIF(subject, ''), 'Не указан')
+        ORDER BY count DESC, name ASC"""
+    ).fetchall()
+    db.close()
+    return jsonify(
+        {
+            "students": students,
+            "tutors": tutors,
+            "lessons": lessons,
+            "pendingApplications": pending_applications,
+            "pendingReviews": pending_reviews,
+            "subjects": [row_to_dict(row) for row in subjects],
+        }
+    )
 
 
 @app.patch("/api/admin/users/<int:user_id>")
@@ -483,19 +768,88 @@ def toggle_goal_task(goal_id, task_id):
     return jsonify({"item": goal_to_dict(updated)})
 
 
+@app.get("/api/chat/contacts")
+@need_login
+def chat_contacts():
+    db = connect_db()
+    rows = chat_contact_rows(db)
+    db.close()
+    return jsonify({"items": [chat_user(row) for row in rows]})
+
+
+@app.route("/api/conversations", methods=["GET", "POST"])
+@need_login
+def conversations():
+    db = connect_db()
+    if request.method == "GET":
+        rows = db.execute(
+            """SELECT conversations.* FROM conversations
+            JOIN conversation_members ON conversation_members.conversation_id = conversations.id
+            WHERE conversation_members.user_id = ? ORDER BY conversations.id DESC""",
+            (g.user["id"],),
+        ).fetchall()
+        items = [conversation_to_dict(db, row, g.user["id"]) for row in rows]
+        db.close()
+        return jsonify({"items": items})
+
+    recipient_id = get_data().get("recipientId")
+    if not isinstance(recipient_id, int):
+        db.close()
+        return jsonify({"error": "Выберите получателя"}), 400
+    allowed = {row["id"] for row in chat_contact_rows(db)}
+    if recipient_id not in allowed:
+        db.close()
+        return jsonify({"error": "С этим пользователем пока нельзя начать диалог"}), 403
+
+    existing = db.execute(
+        """SELECT conversation_id FROM conversation_members
+        WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = ?)
+        GROUP BY conversation_id
+        HAVING COUNT(*) = 2
+        AND SUM(CASE WHEN user_id = ? OR user_id = ? THEN 1 ELSE 0 END) = 2
+        LIMIT 1""",
+        (g.user["id"], g.user["id"], recipient_id),
+    ).fetchone()
+    if existing:
+        conversation = db.execute("SELECT * FROM conversations WHERE id = ?", (existing["conversation_id"],)).fetchone()
+        item = conversation_to_dict(db, conversation, g.user["id"])
+        db.close()
+        return jsonify({"item": item, "created": False})
+
+    recipient = db.execute("SELECT * FROM users WHERE id = ?", (recipient_id,)).fetchone()
+    db.execute("INSERT INTO conversations (title) VALUES (?)", (full_name(recipient),))
+    conversation = db.execute("SELECT * FROM conversations ORDER BY id DESC LIMIT 1").fetchone()
+    db.executemany(
+        "INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)",
+        [(conversation["id"], g.user["id"]), (conversation["id"], recipient_id)],
+    )
+    db.commit()
+    item = conversation_to_dict(db, conversation, g.user["id"])
+    db.close()
+    return jsonify({"item": item, "created": True}), 201
+
+
 @app.route("/api/messages", methods=["GET", "POST"])
 @need_login
 def messages():
     db = connect_db()
-    dialog_id = request.args.get("dialog_id", 1, type=int) if request.method == "GET" else get_data().get("dialogId", 1)
+    dialog_id = request.args.get("dialog_id", type=int) if request.method == "GET" else get_data().get("dialogId")
+    if not isinstance(dialog_id, int):
+        db.close()
+        return jsonify({"error": "Выберите диалог"}), 400
     member = db.execute(
         "SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?",
         (dialog_id, g.user["id"]),
     ).fetchone()
-    if not member and g.user["role"] != "admin":
+    if not member:
         db.close()
         return jsonify({"error": "Этот диалог недоступен"}), 403
     if request.method == "GET":
+        db.execute(
+            "UPDATE messages SET is_read = 1 WHERE dialog_id = ? AND sender_id != ?",
+            (dialog_id, g.user["id"]),
+        )
+        db.commit()
         rows = db.execute("SELECT * FROM messages WHERE dialog_id = ? ORDER BY id", (dialog_id,)).fetchall()
         db.close()
         items = []
@@ -514,6 +868,24 @@ def messages():
         "INSERT INTO messages (dialog_id, sender, sender_id, text, sent_time, is_read) VALUES (?, 'me', ?, ?, ?, 0)",
         (dialog_id, g.user["id"], text, now),
     )
+    recipient_rows = db.execute(
+        "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?",
+        (dialog_id, g.user["id"]),
+    ).fetchall()
+    for recipient in recipient_rows:
+        db.execute(
+            """INSERT INTO notifications (user_id, icon, tone, title, text, created_time, is_read)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                recipient["user_id"],
+                "MessageCircle",
+                "primary",
+                "Новое сообщение",
+                f"{full_name(g.user)} написал(а) вам.",
+                now,
+                0,
+            ),
+        )
     db.commit()
     row = db.execute("SELECT * FROM messages ORDER BY id DESC LIMIT 1").fetchone()
     db.close()
@@ -547,6 +919,10 @@ def review_lessons():
         error = role_error("tutor")
         if error:
             return error
+        data = get_data()
+        video_link, error = video_link_from(data.get("videoLink"))
+        if error:
+            return jsonify({"error": error}), 400
     db = connect_db()
     if request.method == "GET":
         if g.user["role"] == "admin":
@@ -563,12 +939,11 @@ def review_lessons():
             rows = []
         db.close()
         return jsonify({"items": [row_to_dict(row) for row in rows]})
-    data = get_data()
     db.execute(
         """INSERT INTO review_lessons
-        (tutor, tutor_id, tutor_initials, student, lesson_date, duration, video, shots, status, topic)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Ожидает проверки', ?)""",
-        (full_name(g.user), g.user["id"], "".join([g.user["first_name"][0], g.user["last_name"][0]]), data.get("student", ""), data.get("date", ""), data.get("duration", "60 мин"), int(bool(data.get("video"))), int(bool(data.get("shots"))), data.get("topic", "")),
+        (tutor, tutor_id, tutor_initials, student, lesson_date, duration, video, video_link, shots, status, topic)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Ожидает проверки', ?)""",
+        (full_name(g.user), g.user["id"], "".join([g.user["first_name"][0], g.user["last_name"][0]]), data.get("student", ""), data.get("date", ""), data.get("duration", "60 мин"), int(bool(data.get("video")) or bool(video_link)), video_link, int(bool(data.get("shots"))), data.get("topic", "")),
     )
     db.commit()
     row = db.execute("SELECT * FROM review_lessons ORDER BY id DESC LIMIT 1").fetchone()
@@ -616,4 +991,4 @@ def frontend(filename=""):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
+    app.run(host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "5000")), debug=False)
