@@ -62,8 +62,8 @@ async function resetAdmin() {
     form.password = ''
     form.confirm = ''
     success.value = true
-  } catch {
-    error.value = 'Не удалось обновить доступ. Проверьте почту, токен и попробуйте ещё раз.'
+  } catch (requestError) {
+    error.value = requestError.message || 'Не удалось обновить доступ. Проверьте данные и попробуйте ещё раз.'
   } finally {
     submitting.value = false
   }
@@ -85,17 +85,17 @@ async function resetAdmin() {
       <template v-else-if="success">
         <div class="success-icon"><ShieldCheck :size="29" /></div>
         <h1>Пароль обновлён</h1>
-        <p>Теперь войдите в Cogito с почтой администратора и новым паролем.</p>
+        <p>Теперь войдите в Cogito с указанной почтой и новым паролем.</p>
         <RouterLink class="primary-action" to="/login">Перейти ко входу <ArrowRight :size="16" /></RouterLink>
       </template>
       <template v-else-if="available">
         <span class="eyebrow"><ShieldCheck :size="13" /> Защищённый сброс</span>
         <h1>Обновить доступ администратора</h1>
-        <p>Введите почту администраторского аккаунта, токен сброса и новый пароль. Токен скрыт в поле ввода.</p>
+        <p>Укажите почту, с которой будете входить как администратор, токен сброса и новый пароль. Токен скрыт в поле ввода.</p>
 
         <form class="form-grid" novalidate @submit.prevent="resetAdmin">
           <div class="field full">
-            <label for="reset-email">Электронная почта администратора</label>
+            <label for="reset-email">Почта для входа администратора</label>
             <input id="reset-email" v-model.trim="form.email" type="email" autocomplete="email" placeholder="name@example.ru" />
           </div>
           <div class="field full">
