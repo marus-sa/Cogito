@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
-import { initialGoals, initialHomework } from '../data/mockData'
 import { api } from '../api'
 
 export const useHomeworkStore = defineStore('homework', {
-  state: () => ({ homework: [...initialHomework], goals: JSON.parse(JSON.stringify(initialGoals)) }),
+  state: () => ({ homework: [], goals: [] }),
   actions: {
     async loadHomework() {
       const [homeworkData, goalsData] = await Promise.all([api('/homework'), api('/goals')])
