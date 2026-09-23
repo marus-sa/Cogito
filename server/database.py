@@ -201,6 +201,10 @@ SQLITE_SCHEMA = [
         used_at TEXT NOT NULL,
         FOREIGN KEY (admin_user_id) REFERENCES users(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS admin_password_reset_authorizations (
+        token_fingerprint TEXT PRIMARY KEY,
+        expires_at TEXT NOT NULL
+    )""",
 ]
 
 
@@ -234,6 +238,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_lessons_tutor_id ON lessons(tutor_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_dialog_id ON messages(dialog_id)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_admin_reset_authorizations_expires_at ON admin_password_reset_authorizations(expires_at)",
 ]
 
 

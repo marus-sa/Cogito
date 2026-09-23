@@ -17,6 +17,7 @@ postgres_sessions_schema = next(
 assert "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" in postgres_sessions_schema
 assert "created_at TEXT DEFAULT CURRENT_TIMESTAMP" not in postgres_sessions_schema
 assert any("CREATE TABLE IF NOT EXISTS admin_password_reset_tokens" in statement for statement in database.POSTGRES_SCHEMA)
+assert any("CREATE TABLE IF NOT EXISTS admin_password_reset_authorizations" in statement for statement in database.POSTGRES_SCHEMA)
 
 
 def login(app, email, role, password="cogito123"):
@@ -351,10 +352,25 @@ try:
         )
         assert weak_password.status_code == 400
 
+        # Верный код можно подтвердить отдельно. После этого он больше не
+        # хранится в интерфейсе: короткая HTTP-only сессия позволяет задать
+        # почту и пароль даже после перерисовки формы.
+        bad_authorization = reset.post(
+            "/api/auth/admin-password-reset/authorize",
+            json={"token": "not-the-test-token"},
+        )
+        assert bad_authorization.status_code == 403
+        authorized = reset.post(
+            "/api/auth/admin-password-reset/authorize",
+            json={"token": "test-only-one-time-reset-token-123456"},
+        )
+        assert authorized.status_code == 200
+        assert authorized.json == {"authorized": True}
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": True, "authorized": True}
+
         changed = reset.post(
             "/api/auth/admin-password-reset",
             json={
-                "token": "test-only-one-time-reset-token-123456",
                 "email": "RECOVERY.OWNER@example.ru",
                 "newPassword": "new-secure-password",
             },
@@ -373,9 +389,13 @@ try:
         reset_rows = db.execute(
             "SELECT token_fingerprint, admin_user_id, used_at FROM admin_password_reset_tokens"
         ).fetchall()
+        authorization_rows = db.execute(
+            "SELECT token_fingerprint, expires_at FROM admin_password_reset_authorizations"
+        ).fetchall()
         updated = db.execute("SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)).fetchone()
         db.close()
         assert len(reset_rows) == 1
+        assert authorization_rows == []
         assert reset_rows[0]["token_fingerprint"] == hashlib.sha256(
             b"test-only-one-time-reset-token-123456"
         ).hexdigest()
