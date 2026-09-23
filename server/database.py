@@ -195,6 +195,12 @@ SQLITE_SCHEMA = [
         student_id INTEGER NOT NULL,
         PRIMARY KEY (parent_id, student_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS admin_password_reset_tokens (
+        token_fingerprint TEXT PRIMARY KEY,
+        admin_user_id INTEGER NOT NULL,
+        used_at TEXT NOT NULL,
+        FOREIGN KEY (admin_user_id) REFERENCES users(id)
+    )""",
 ]
 
 

@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -16,6 +18,7 @@ from database import connect_db, is_production, start_database
 PROJECT_FOLDER = Path(__file__).resolve().parent.parent
 FRONTEND_FOLDER = PROJECT_FOLDER / "dist"
 COOKIE_NAME = "cogito_session"
+ADMIN_RESET_TOKEN_ENV = "ADMIN_RESET_TOKEN"
 PUBLIC_REGISTER_ROLES = {"student", "parent", "tutor"}
 ROLE_LABELS = {
     "student": "Ученик",
@@ -69,6 +72,62 @@ def goal_to_dict(row):
 
 def get_data():
     return request.get_json(silent=True) or {}
+
+
+def configured_admin_reset_token():
+    """Возвращает одноразовый код сброса только на опубликованном сайте.
+
+    Локальная база не должна получить такой обходной путь: там администратора
+    создают через форму только для этого компьютера. Сам код остаётся только в
+    переменных окружения хостинга и никогда не отдаётся клиенту.
+    """
+    token = os.environ.get(ADMIN_RESET_TOKEN_ENV, "").strip()
+    # Короткий код легко подобрать, поэтому форма намеренно остаётся скрытой,
+    # пока в хостинге не задан случайный код хотя бы из 32 символов.
+    return token if is_production() and len(token) >= 32 else None
+
+
+def reset_token_fingerprint(token):
+    """Фиксированная SHA-256-отметка без сохранения самого кода."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def reset_token_matches(submitted_token, configured_token):
+    """Сверяет коды за одинаковое время, не раскрывая код из окружения."""
+    if not isinstance(submitted_token, str):
+        return False
+    return hmac.compare_digest(
+        hashlib.sha256(submitted_token.strip().encode("utf-8")).digest(),
+        hashlib.sha256(configured_token.encode("utf-8")).digest(),
+    )
+
+
+def admin_reset_error(status=403):
+    """Один ответ для неверного кода, почты и повторного использования."""
+    return jsonify({"error": "Не удалось сбросить пароль. Проверьте данные и попробуйте снова."}), status
+
+
+def admin_reset_available(configured_token):
+    """Показывает форму, только пока код действительно можно применить."""
+    if not configured_token:
+        return False
+    db = connect_db()
+    try:
+        used = db.execute(
+            "SELECT 1 FROM admin_password_reset_tokens WHERE token_fingerprint = ?",
+            (reset_token_fingerprint(configured_token),),
+        ).fetchone()
+        active_admins = db.execute(
+            """SELECT COUNT(*) AS count FROM users
+            WHERE role = 'admin' AND account_status = 'active'"""
+        ).fetchone()
+        return not bool(used) and active_admins["count"] == 1
+    except Exception:
+        # Не заявляем о доступности аварийной формы, если базу нельзя
+        # проверить. Детали ошибки не отправляем и не логируем.
+        return False
+    finally:
+        db.close()
 
 
 def video_link_from(value):
@@ -401,6 +460,76 @@ def local_admin_setup():
     db.close()
     response = jsonify({"user": user_for_frontend(user)})
     return set_session_cookie(response, create_session(user["id"])), 201
+
+
+@app.route("/api/auth/admin-password-reset", methods=["GET", "POST"])
+def admin_password_reset():
+    """Одноразово меняет пароль существующего активного администратора.
+
+    Этот аварийный путь включается только явной переменной окружения на
+    хостинге. GET ничего не раскрывает, кроме того, доступна ли форма.
+    POST не сообщает, что именно оказалось неверным, чтобы не позволять
+    подбирать почту администратора или проверять использованный код.
+    """
+    configured_token = configured_admin_reset_token()
+    if request.method == "GET":
+        return jsonify({"available": admin_reset_available(configured_token)})
+    if not configured_token:
+        return admin_reset_error(404)
+
+    data = get_data()
+    submitted_token = data.get("token")
+    email = data.get("email")
+    new_password = data.get("newPassword")
+    if not reset_token_matches(submitted_token, configured_token):
+        return admin_reset_error()
+    if not isinstance(email, str) or not isinstance(new_password, str):
+        return admin_reset_error()
+    if len(new_password) < 12:
+        return jsonify({"error": "Новый пароль администратора должен содержать не менее 12 символов"}), 400
+
+    # Сброс не умеет выбирать между администраторами: он работает, только
+    # когда в базе ровно один активный админ. Почта из формы подтверждает
+    # именно эту единственную учётную запись.
+    submitted_email = email.strip().lower()
+    db = connect_db()
+    try:
+        admins = db.execute(
+            """SELECT id, email FROM users
+            WHERE role = 'admin' AND account_status = 'active'
+            ORDER BY id"""
+        ).fetchall()
+        if len(admins) != 1:
+            return admin_reset_error()
+        admin = admins[0]
+        if not hmac.compare_digest(
+            submitted_email.encode("utf-8"), admin["email"].strip().lower().encode("utf-8")
+        ):
+            return admin_reset_error()
+
+        fingerprint = reset_token_fingerprint(configured_token)
+        # PRIMARY KEY не даёт применить один код дважды. Вставка, смена
+        # пароля и закрытие старых сессий происходят в одной транзакции.
+        db.execute(
+            """INSERT INTO admin_password_reset_tokens
+            (token_fingerprint, admin_user_id, used_at) VALUES (?, ?, ?)""",
+            (fingerprint, admin["id"], datetime.now(timezone.utc).isoformat()),
+        )
+        changed = db.execute(
+            """UPDATE users SET password_hash = ?
+            WHERE id = ? AND role = 'admin' AND account_status = 'active'""",
+            (generate_password_hash(new_password), admin["id"]),
+        )
+        if changed.rowcount != 1:
+            raise RuntimeError("Admin account changed during password reset")
+        db.execute("DELETE FROM sessions WHERE user_id = ?", (admin["id"],))
+        db.commit()
+    except Exception:
+        db.rollback()
+        return admin_reset_error()
+    finally:
+        db.close()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/auth/login")
