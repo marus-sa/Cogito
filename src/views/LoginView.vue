@@ -13,14 +13,18 @@ const errors = reactive({ email: '', password: '' })
 const showPassword = ref(false)
 const isSubmitting = ref(false)
 const localSetupAvailable = ref(false)
+const adminResetAvailable = ref(false)
 const roleOptions = Object.entries(roles)
 const selectedRole = computed(() => roles[form.role])
 
 onMounted(async () => {
-  try {
-    const result = await api('/setup/local-admin')
-    localSetupAvailable.value = result.available
-  } catch { /* На опубликованном сайте локальная настройка недоступна. */ }
+  const [localSetup, adminReset] = await Promise.allSettled([
+    api('/setup/local-admin'),
+    api('/auth/admin-password-reset'),
+  ])
+
+  if (localSetup.status === 'fulfilled') localSetupAvailable.value = localSetup.value.available
+  if (adminReset.status === 'fulfilled') adminResetAvailable.value = adminReset.value.available
 })
 
 function validate() {
@@ -60,7 +64,7 @@ async function login() {
         <div class="field"><label for="password">Пароль</label><div class="password-field"><input id="password" v-model="form.password" :type="showPassword ? 'text' : 'password'" placeholder="Не менее 6 символов" @blur="validate" /><button type="button" :aria-label="showPassword ? 'Скрыть пароль' : 'Показать пароль'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><span v-if="errors.password" class="error-text">{{ errors.password }}</span></div>
         <div class="login-options"><label class="check"><input v-model="form.remember" type="checkbox" /><span></span>Запомнить меня</label><span class="forgot">Не получается войти? Напишите координатору.</span></div>
         <button class="submit" type="submit" :disabled="isSubmitting">{{ isSubmitting ? 'Входим…' : `Войти как ${selectedRole.label.toLowerCase()}` }}<ArrowRight v-if="!isSubmitting" :size="17" /></button>
-        <p class="register-link">Впервые в Cogito? <RouterLink to="/register">Создать аккаунт</RouterLink></p><p v-if="localSetupAvailable" class="setup-link">Это ваш первый запуск? <RouterLink to="/setup-admin">Создать локального администратора</RouterLink></p>
+        <p class="register-link">Впервые в Cogito? <RouterLink to="/register">Создать аккаунт</RouterLink></p><p v-if="localSetupAvailable" class="setup-link">Это ваш первый запуск? <RouterLink to="/setup-admin">Создать локального администратора</RouterLink></p><p v-if="adminResetAvailable" class="setup-link">Не удаётся войти администратором? <RouterLink to="/admin-reset">Сбросить доступ</RouterLink></p>
       </form>
     </main>
   </div>
