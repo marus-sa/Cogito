@@ -12,7 +12,7 @@ const messages = useMessagesStore()
 
 onMounted(async () => {
   try {
-    await Promise.all([lessons.loadLessons(), homework.loadHomework(), messages.loadMessages(), messages.loadNotifications()])
+    await Promise.all([lessons.loadLessons(), homework.loadHomework(), messages.loadNotifications()])
   } catch {
     messages.showToast('Не получилось обновить данные с сервера', 'error')
   }
