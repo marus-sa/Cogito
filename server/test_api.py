@@ -1,10 +1,11 @@
+import hashlib
 import os
 import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import database
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 os.environ["COGITO_DEMO_DATA"] = "1"
 
@@ -15,6 +16,7 @@ postgres_sessions_schema = next(
 )
 assert "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" in postgres_sessions_schema
 assert "created_at TEXT DEFAULT CURRENT_TIMESTAMP" not in postgres_sessions_schema
+assert any("CREATE TABLE IF NOT EXISTS admin_password_reset_tokens" in statement for statement in database.POSTGRES_SCHEMA)
 
 
 def login(app, email, role, password="cogito123"):
@@ -213,11 +215,22 @@ with TemporaryDirectory() as folder:
     assert local.get("/api/setup/local-admin").json["available"] is False
 
 
-saved_environment = {key: os.environ.get(key) for key in ["FLASK_ENV", "ADMIN_EMAIL", "ADMIN_BOOTSTRAP_PASSWORD", "DATABASE_URL", "COGITO_DEMO_DATA"]}
+saved_environment = {
+    key: os.environ.get(key)
+    for key in [
+        "FLASK_ENV",
+        "ADMIN_EMAIL",
+        "ADMIN_BOOTSTRAP_PASSWORD",
+        "ADMIN_RESET_TOKEN",
+        "DATABASE_URL",
+        "COGITO_DEMO_DATA",
+    ]
+}
 try:
     os.environ["FLASK_ENV"] = "production"
     os.environ["ADMIN_EMAIL"] = "owner@example.ru"
     os.environ["ADMIN_BOOTSTRAP_PASSWORD"] = "a-strong-private-password"
+    os.environ["ADMIN_RESET_TOKEN"] = "test-only-one-time-reset-token-123456"
     os.environ.pop("DATABASE_URL", None)
 
     with TemporaryDirectory() as folder:
@@ -232,6 +245,124 @@ try:
         assert users[0]["email"] == "owner@example.ru"
         assert users[0]["role"] == "admin"
         assert check_password_hash(users[0]["password_hash"], "a-strong-private-password")
+
+        # Сброс на уже работающем сайте не зависит от старой bootstrap-
+        # переменной: владельца безопасно определяет запись в базе.
+        os.environ.pop("ADMIN_EMAIL")
+        reset = app.test_client()
+        os.environ["ADMIN_RESET_TOKEN"] = "too-short"
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": False}
+        os.environ["ADMIN_RESET_TOKEN"] = "test-only-one-time-reset-token-123456"
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
+        old_session = reset.post(
+            "/api/auth/login",
+            json={
+                "email": "owner@example.ru",
+                "password": "a-strong-private-password",
+                "role": "admin",
+            },
+        )
+        assert old_session.status_code == 200
+
+        # Неверный код и неподходящая почта не меняют пароль и не расходуют
+        # одноразовый код.
+        wrong_token = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "not-the-test-token",
+                "email": "owner@example.ru",
+                "newPassword": "new-secure-password",
+            },
+        )
+        assert wrong_token.status_code == 403
+        wrong_email = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "test-only-one-time-reset-token-123456",
+                "email": "other@example.ru",
+                "newPassword": "new-secure-password",
+            },
+        )
+        assert wrong_email.status_code == 403
+
+        # Когда администраторов больше одного, сервер не выбирает цель
+        # произвольно и вообще не показывает аварийную форму.
+        db = database.connect_db()
+        db.execute(
+            """INSERT INTO users
+            (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio)
+            VALUES (?, ?, ?, ?, 'admin', 'active', '', '', '', '', '')""",
+            ("Второй", "Администратор", "second.admin@example.ru", generate_password_hash("another-secure-password")),
+        )
+        db.commit()
+        db.close()
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": False}
+        ambiguous = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "test-only-one-time-reset-token-123456",
+                "email": "owner@example.ru",
+                "newPassword": "new-secure-password",
+            },
+        )
+        assert ambiguous.status_code == 403
+        db = database.connect_db()
+        db.execute("DELETE FROM users WHERE email = ?", ("second.admin@example.ru",))
+        db.commit()
+        db.close()
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
+
+        weak_password = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "test-only-one-time-reset-token-123456",
+                "email": "owner@example.ru",
+                "newPassword": "too-short",
+            },
+        )
+        assert weak_password.status_code == 400
+
+        changed = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "test-only-one-time-reset-token-123456",
+                "email": "OWNER@example.ru",
+                "newPassword": "new-secure-password",
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json == {"ok": True}
+        assert reset.get("/api/auth/admin-password-reset").json == {"available": False}
+        assert reset.get("/api/auth/me").status_code == 401
+        assert login(app, "owner@example.ru", "admin", "new-secure-password").get("/api/auth/me").status_code == 200
+
+        db = database.connect_db()
+        reset_rows = db.execute(
+            "SELECT token_fingerprint, admin_user_id, used_at FROM admin_password_reset_tokens"
+        ).fetchall()
+        updated = db.execute("SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)).fetchone()
+        db.close()
+        assert len(reset_rows) == 1
+        assert reset_rows[0]["token_fingerprint"] == hashlib.sha256(
+            b"test-only-one-time-reset-token-123456"
+        ).hexdigest()
+        assert "test-only-one-time-reset-token-123456" not in reset_rows[0]["token_fingerprint"]
+        assert reset_rows[0]["used_at"]
+        assert check_password_hash(updated["password_hash"], "new-secure-password")
+
+        reused = reset.post(
+            "/api/auth/admin-password-reset",
+            json={
+                "token": "test-only-one-time-reset-token-123456",
+                "email": "owner@example.ru",
+                "newPassword": "another-secure-password",
+            },
+        )
+        assert reused.status_code == 403
+        db = database.connect_db()
+        after_reuse = db.execute("SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)).fetchone()
+        db.close()
+        assert check_password_hash(after_reuse["password_hash"], "new-secure-password")
 finally:
     for key, value in saved_environment.items():
         if value is None:
