@@ -17,8 +17,8 @@ const submitOpen = ref(false)
 const gradeOpen = ref(false)
 const selected = ref(null)
 const isTutor = computed(() => ['tutor', 'mentor', 'admin'].includes(auth.roleKey))
-const form = reactive({ student: 'Анна Смирнова', title: '', subject: 'Математика', deadline: '7 августа', description: '', maxScore: 10 })
-const grade = reactive({ score: 8, comment: 'Хорошая работа! Проверьте ещё раз пункт 7.' })
+const form = reactive({ student: '', title: '', subject: '', deadline: '', description: '', maxScore: 10 })
+const grade = reactive({ score: null, comment: '' })
 const filtered = computed(() => tab.value === 'Все' ? store.homework : store.homework.filter((item) => item.status === tab.value || (tab.value === 'Новые' && item.status === 'Новые')))
 const statusClass = (status) => ({ 'Проверено': 'success', 'Просрочено': 'danger', 'В работе': 'warning', 'Сданы': 'purple' }[status] || 'gray')
 async function create() {
@@ -26,11 +26,18 @@ async function create() {
     messages.showToast('Укажите название задания', 'error')
     return
   }
+  if (!form.student.trim()) {
+    messages.showToast('Укажите ученика из зарегистрированных пользователей', 'error')
+    return
+  }
 
   try {
     await store.addHomework(form)
     createOpen.value = false
+    form.student = ''
     form.title = ''
+    form.subject = ''
+    form.deadline = ''
     form.description = ''
     messages.showToast('Домашнее задание создано')
   } catch (error) {
@@ -47,8 +54,17 @@ async function sendWork() {
     messages.showToast(error.message, 'error')
   }
 }
-function review(item) { selected.value = item; gradeOpen.value = true }
+function review(item) {
+  selected.value = item
+  grade.score = null
+  grade.comment = ''
+  gradeOpen.value = true
+}
 async function gradeWork() {
+  if (!Number.isFinite(Number(grade.score)) || Number(grade.score) < 0 || Number(grade.score) > 10) {
+    messages.showToast('Укажите балл от 0 до 10', 'error')
+    return
+  }
   try {
     await store.gradeHomework(selected.value.id, `${grade.score} / 10`)
     gradeOpen.value = false
@@ -62,7 +78,7 @@ async function gradeWork() {
   <div class="page"><div class="page-heading"><div><h1>Домашние задания</h1><p>Все задания, сроки и обратная связь от репетитора.</p></div><BaseButton v-if="isTutor" @click="createOpen = true"><Plus :size="17" /> Задать домашнее задание</BaseButton></div>
     <section class="tabs"><button v-for="name in ['Все','Новые','В работе','Сданы','Проверено','Просрочено']" :key="name" :class="{ active: tab === name }" @click="tab = name">{{ name }} <span>{{ name === 'Все' ? store.homework.length : store.homework.filter(i => i.status === name).length }}</span></button></section>
     <section v-if="filtered.length" class="homework-grid"><article v-for="item in filtered" :key="item.id" class="homework-card card card-hover"><header><span :class="['tag', statusClass(item.status)]">{{ item.status }}</span><span v-if="item.score" class="score"><Star :size="13" /> {{ item.score }}</span></header><div class="subject-icon"><FilePlus2 :size="21" /></div><p class="subject">{{ item.subject }}</p><h2>{{ item.title }}</h2><p class="description">{{ item.description }}</p><div class="task-info"><span>Ученик <b>{{ item.student }}</b></span><span>Срок <b>{{ item.deadline }}</b></span></div><div class="card-footer"><span v-if="item.attachment" class="attachment"><Paperclip :size="13" /> {{ item.attachment }}</span><span v-else class="muted tiny">Без вложений</span><BaseButton v-if="isTutor && ['Сданы','В работе'].includes(item.status)" size="sm" @click="review(item)">Проверить</BaseButton><BaseButton v-else-if="!isTutor && item.status === 'В работе'" size="sm" @click="submit(item)">Сдать работу</BaseButton><button v-else class="view-button" @click="messages.showToast('Карточка задания открыта')">Подробнее</button></div></article></section><section v-else class="card"><EmptyState title="В этой категории пока нет заданий" text="Попробуйте выбрать другую вкладку или создайте новое задание." /></section>
-    <BaseModal v-model="createOpen" title="Новое домашнее задание" wide><div class="form-grid"><div class="field"><label>Ученик</label><select v-model="form.student"><option>Анна Смирнова</option><option>Данил Мельников</option><option>Полина Кравцова</option></select></div><div class="field"><label>Предмет</label><input v-model="form.subject" /></div><div class="field full"><label>Название</label><input v-model="form.title" placeholder="Например, задачи на линейные уравнения" /></div><div class="field full"><label>Описание</label><textarea v-model="form.description" placeholder="Объясните, что нужно сделать…" /></div><div class="field"><label>Срок</label><input v-model="form.deadline" /></div><div class="field"><label>Максимальный балл</label><input v-model.number="form.maxScore" type="number" min="1" max="100" /></div><div class="file-box field full"><label><Paperclip :size="17" /> Прикрепить файл или ссылку<input type="file" /></label><small>В прототипе файл не загружается — можно выбрать его для отображения.</small></div></div><template #footer><BaseButton variant="outline" @click="createOpen = false">Отмена</BaseButton><BaseButton @click="create">Создать задание</BaseButton></template></BaseModal>
+    <BaseModal v-model="createOpen" title="Новое домашнее задание" wide><div class="form-grid"><div class="field"><label>Ученик</label><input v-model.trim="form.student" placeholder="Полное имя зарегистрированного ученика" /></div><div class="field"><label>Предмет</label><input v-model="form.subject" placeholder="Например, математика" /></div><div class="field full"><label>Название</label><input v-model="form.title" placeholder="Например, задачи на линейные уравнения" /></div><div class="field full"><label>Описание</label><textarea v-model="form.description" placeholder="Объясните, что нужно сделать…" /></div><div class="field"><label>Срок</label><input v-model="form.deadline" placeholder="Например, 7 августа" /></div><div class="field"><label>Максимальный балл</label><input v-model.number="form.maxScore" type="number" min="1" max="100" /></div><div class="file-box field full"><label><Paperclip :size="17" /> Прикрепить файл или ссылку<input type="file" /></label><small>Выбор файла пока не загружает его на сервер.</small></div></div><template #footer><BaseButton variant="outline" @click="createOpen = false">Отмена</BaseButton><BaseButton @click="create">Создать задание</BaseButton></template></BaseModal>
     <BaseModal v-model="submitOpen" title="Сдать домашнее задание"><p class="modal-copy">Оставьте комментарий репетитору и приложите выполненную работу.</p><div class="field"><label>Комментарий</label><textarea placeholder="Например, мне было сложно с заданием 8…" /></div><label class="upload-field"><Paperclip :size="19" /><span><b>Прикрепить файл</b><small>Фото, PDF или документ</small></span><input type="file" /></label><template #footer><BaseButton variant="outline" @click="submitOpen = false">Отмена</BaseButton><BaseButton @click="sendWork"><Send :size="15" /> Отправить</BaseButton></template></BaseModal>
     <BaseModal v-model="gradeOpen" title="Проверить работу"><p class="modal-copy">{{ selected?.title }} · {{ selected?.student }}</p><div class="form-grid"><div class="field"><label>Балл из 10</label><input v-model.number="grade.score" type="number" min="0" max="10" /></div><div class="field"><label>Решение</label><select><option>Принять работу</option><option>Вернуть на доработку</option></select></div><div class="field full"><label>Комментарий ученику</label><textarea v-model="grade.comment" /></div></div><template #footer><BaseButton variant="outline" @click="gradeOpen = false">Отмена</BaseButton><BaseButton @click="gradeWork"><CheckCheck :size="16" /> Сохранить проверку</BaseButton></template></BaseModal>
   </div>

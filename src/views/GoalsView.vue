@@ -13,7 +13,7 @@ const auth = useAuthStore()
 const messages = useMessagesStore()
 const modalOpen = ref(false)
 const canAdd = computed(() => ['student', 'tutor', 'mentor', 'admin'].includes(auth.roleKey))
-const form = reactive({ title: '', subject: 'Математика', deadline: '25 августа', description: '', tasksText: '' })
+const form = reactive({ title: '', subject: '', deadline: '', description: '', tasksText: '' })
 const progress = (goal) => goal.tasks.length ? Math.round(goal.tasks.filter((task) => task.done).length / goal.tasks.length * 100) : 0
 async function addGoal() {
   if (!form.title.trim()) {
@@ -30,6 +30,8 @@ async function addGoal() {
     await store.addGoal({ ...form, tasks })
     modalOpen.value = false
     form.title = ''
+    form.subject = ''
+    form.deadline = ''
     form.description = ''
     form.tasksText = ''
     messages.showToast('Учебная цель добавлена')
@@ -50,7 +52,7 @@ async function toggle(goal, task) {
 <template>
   <div class="page"><div class="page-heading"><div><h1>Учебные цели</h1><p>Большие результаты складываются из маленьких понятных шагов.</p></div><BaseButton v-if="canAdd" @click="modalOpen = true"><Plus :size="17" /> Добавить цель</BaseButton></div>
     <section class="goal-list"><article v-for="goal in store.goals" :key="goal.id" class="goal-full card"><header><span class="goal-icon"><Target :size="22" /></span><div><span class="tag">{{ goal.subject }}</span><h2>{{ goal.title }}</h2><p>{{ goal.description }}</p></div><div class="goal-status"><b>{{ progress(goal) }}%</b><span>выполнено</span></div></header><div class="goal-progress"><ProgressBar :value="progress(goal)" :show-label="false" /><div><span><CalendarDays :size="13" /> Срок: {{ goal.deadline }}</span><span>Репетитор: <b>{{ goal.tutor }}</b></span></div></div><div class="tasks"><div class="tasks-head"><h3>Подзадачи</h3><span>{{ goal.tasks.filter(t => t.done).length }} из {{ goal.tasks.length }}</span></div><button v-for="task in goal.tasks" :key="task.id" class="task" :class="{ done: task.done }" @click="toggle(goal, task)"><i><Check v-if="task.done" :size="14" /></i><span>{{ task.label }}</span><CheckCircle2 v-if="task.done" :size="16" /></button><div v-if="goal.tasks.length === 0" class="no-tasks">Добавьте подзадачи, чтобы отслеживать путь к цели.</div></div><footer v-if="progress(goal) === 100"><span><Award :size="17" /> Цель завершена</span><p>Вы последовательно шли вперёд — это важный результат.</p></footer></article></section>
-    <BaseModal v-model="modalOpen" title="Новая учебная цель" wide><div class="form-grid"><div class="field full"><label>Название цели</label><input v-model="form.title" placeholder="Например, повысить оценку с 3 до 4" /></div><div class="field"><label>Предмет</label><input v-model="form.subject" /></div><div class="field"><label>Срок</label><input v-model="form.deadline" /></div><div class="field full"><label>Измеримый результат и описание</label><textarea v-model="form.description" placeholder="Как будет выглядеть достигнутый результат?" /></div><div class="field full"><label>Подзадачи и контрольные точки</label><textarea v-model="form.tasksText" placeholder="Каждая подзадача с новой строки\nПовторить дроби\nВыполнить итоговый тест" /></div></div><template #footer><BaseButton variant="outline" @click="modalOpen = false">Отмена</BaseButton><BaseButton @click="addGoal">Создать цель</BaseButton></template></BaseModal>
+    <BaseModal v-model="modalOpen" title="Новая учебная цель" wide><div class="form-grid"><div class="field full"><label>Название цели</label><input v-model="form.title" placeholder="Например, повысить оценку с 3 до 4" /></div><div class="field"><label>Предмет</label><input v-model="form.subject" placeholder="Например, математика" /></div><div class="field"><label>Срок</label><input v-model="form.deadline" placeholder="Например, 25 августа" /></div><div class="field full"><label>Измеримый результат и описание</label><textarea v-model="form.description" placeholder="Как будет выглядеть достигнутый результат?" /></div><div class="field full"><label>Подзадачи и контрольные точки</label><textarea v-model="form.tasksText" placeholder="Каждая подзадача с новой строки\nПовторить дроби\nВыполнить итоговый тест" /></div></div><template #footer><BaseButton variant="outline" @click="modalOpen = false">Отмена</BaseButton><BaseButton @click="addGoal">Создать цель</BaseButton></template></BaseModal>
   </div>
 </template>
 <style scoped>
