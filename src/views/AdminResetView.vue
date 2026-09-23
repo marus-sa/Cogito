@@ -8,13 +8,16 @@ const form = reactive({ email: '', token: '', password: '', confirm: '' })
 const available = ref(false)
 const loading = ref(true)
 const submitting = ref(false)
+const authorizing = ref(false)
 const error = ref('')
 const success = ref(false)
+const authorized = ref(false)
 
 onMounted(async () => {
   try {
     const result = await api('/auth/admin-password-reset')
     available.value = result.available === true
+    authorized.value = result.authorized === true
   } catch {
     available.value = false
   } finally {
@@ -27,7 +30,7 @@ function validate() {
     error.value = 'Укажите корректную электронную почту.'
     return false
   }
-  if (!form.token) {
+  if (!authorized.value && !form.token) {
     error.value = 'Введите токен сброса.'
     return false
   }
@@ -42,19 +45,43 @@ function validate() {
   return true
 }
 
+async function authorizeToken() {
+  error.value = ''
+  if (!form.token) {
+    error.value = 'Введите токен сброса.'
+    return
+  }
+
+  authorizing.value = true
+  try {
+    await api('/auth/admin-password-reset/authorize', {
+      method: 'POST',
+      body: JSON.stringify({ token: form.token }),
+    })
+    form.token = ''
+    authorized.value = true
+  } catch (requestError) {
+    error.value = requestError.message || 'Не удалось подтвердить код.'
+  } finally {
+    authorizing.value = false
+  }
+}
+
 async function resetAdmin() {
   error.value = ''
   if (!validate()) return
 
   submitting.value = true
   try {
+    const payload = {
+      email: form.email,
+      newPassword: form.password,
+    }
+    if (!authorized.value) payload.token = form.token
+
     await api('/auth/admin-password-reset', {
       method: 'POST',
-      body: JSON.stringify({
-        email: form.email,
-        token: form.token,
-        newPassword: form.password,
-      }),
+      body: JSON.stringify(payload),
     })
 
     form.email = ''
@@ -98,10 +125,14 @@ async function resetAdmin() {
             <label for="reset-email">Почта для входа администратора</label>
             <input id="reset-email" v-model.trim="form.email" type="email" autocomplete="email" placeholder="name@example.ru" />
           </div>
-          <div class="field full">
+          <div v-if="!authorized" class="field full">
             <label for="reset-token">Токен сброса</label>
             <input id="reset-token" v-model="form.token" type="password" autocomplete="off" placeholder="Введите токен" />
+            <button class="authorize-action" type="button" :disabled="authorizing" @click="authorizeToken">
+              {{ authorizing ? 'Подтверждаем…' : 'Подтвердить код' }}
+            </button>
           </div>
+          <p v-else class="authorized full"><ShieldCheck :size="15" /> Код подтверждён. Теперь укажите почту и новый пароль.</p>
           <div class="field">
             <label for="reset-password">Новый пароль</label>
             <input id="reset-password" v-model="form.password" type="password" autocomplete="new-password" placeholder="Не менее 12 символов" />
@@ -141,6 +172,9 @@ header { display: flex; align-items: center; justify-content: space-between; max
 .field label { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 10px; font-weight: 800; }
 .field input { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid var(--border); border-radius: 10px; outline: 0; font: inherit; font-size: 12px; }
 .field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-extra-light); }
+.authorize-action { min-height: 32px; margin-top: 8px; padding: 0 11px; border: 1px solid var(--primary); border-radius: 9px; color: var(--primary-dark); background: #fff; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.authorize-action:disabled { opacity: .7; cursor: wait; }
+.authorized { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 11px; border-radius: 10px; color: #478363; background: #e8f5ee; font-size: 11px; font-weight: 700; }
 .error { margin: 3px 0 0; color: #ae5b5b; font-size: 11px; text-align: center; }
 .primary-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; margin-top: 22px; padding: 0 15px; border: 0; border-radius: 11px; color: #fff; background: var(--primary); font-size: 12px; font-weight: 800; }
 .form-grid .primary-action { width: 100%; margin-top: 6px; }
