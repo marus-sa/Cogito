@@ -1,24 +1,184 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { BookOpen, CalendarDays, CheckCircle2, Sparkles, Target, TrendingUp } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { BookOpen, CalendarDays, CheckCircle2, Target, TrendingUp } from 'lucide-vue-next'
+import { useAuthStore } from '../stores/auth'
 import { useHomeworkStore } from '../stores/homework'
-import StatCard from '../components/StatCard.vue'
-import PerformanceChart from '../components/PerformanceChart.vue'
+import { useLessonsStore } from '../stores/lessons'
+import EmptyState from '../components/EmptyState.vue'
 import ProgressBar from '../components/ProgressBar.vue'
+import StatCard from '../components/StatCard.vue'
 
-const store = useHomeworkStore()
-const subject = ref('Математика')
-const period = ref('За 6 недель')
-const goal = computed(() => store.goals[0])
-const goalProgress = computed(() => Math.round(goal.value.tasks.filter((item) => item.done).length / goal.value.tasks.length * 100))
+const auth = useAuthStore()
+const homework = useHomeworkStore()
+const lessons = useLessonsStore()
+
+function goalTasks(goal) {
+  return Array.isArray(goal.tasks) ? goal.tasks : []
+}
+
+function scorePercent(score) {
+  const match = String(score || '').match(/^\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*$/)
+  if (!match) return null
+
+  const earned = Number(match[1].replace(',', '.'))
+  const total = Number(match[2].replace(',', '.'))
+  if (!Number.isFinite(earned) || !Number.isFinite(total) || total <= 0) return null
+
+  return Math.round((earned / total) * 100)
+}
+
+const scopeText = computed(() => {
+  const texts = {
+    student: 'Здесь собраны данные по вашим заданиям, занятиям и учебным целям.',
+    parent: 'Здесь собраны доступные данные по заданиям, занятиям и учебным целям ребёнка.',
+    tutor: 'Здесь собраны данные по доступным заданиям, занятиям и учебным целям учеников.',
+    mentor: 'Здесь собраны данные по доступным занятиям и учебным целям команды.',
+    admin: 'Здесь собраны данные по занятиям, заданиям и учебным целям проекта.',
+  }
+  return texts[auth.roleKey] || 'Здесь собраны доступные данные об учебном прогрессе.'
+})
+
+const gradedHomework = computed(() => homework.homework.filter((item) => item.score))
+const scoredHomework = computed(() => gradedHomework.value
+  .map((item) => ({ ...item, percent: scorePercent(item.score) }))
+  .filter((item) => item.percent !== null))
+const averageScore = computed(() => {
+  if (!scoredHomework.value.length) return null
+  return Math.round(scoredHomework.value.reduce((sum, item) => sum + item.percent, 0) / scoredHomework.value.length)
+})
+const completedHomework = computed(() => homework.homework.filter((item) => ['Сданы', 'Проверено'].includes(item.status)).length)
+const heldLessons = computed(() => lessons.lessons.filter((item) => item.status === 'Проведено').length)
+const totalGoalTasks = computed(() => homework.goals.reduce((sum, goal) => sum + goalTasks(goal).length, 0))
+const completedGoalTasks = computed(() => homework.goals.reduce(
+  (sum, goal) => sum + goalTasks(goal).filter((task) => task.done).length,
+  0,
+))
+const goalProgress = computed(() => totalGoalTasks.value
+  ? Math.round((completedGoalTasks.value / totalGoalTasks.value) * 100)
+  : 0)
+const hasData = computed(() => homework.homework.length || lessons.lessons.length || homework.goals.length)
+
+const subjects = computed(() => {
+  const result = new Map()
+  const add = (subject, type) => {
+    const name = String(subject || '').trim()
+    if (!name) return
+    if (!result.has(name)) result.set(name, { name, homework: 0, lessons: 0, goals: 0 })
+    result.get(name)[type] += 1
+  }
+
+  homework.homework.forEach((item) => add(item.subject, 'homework'))
+  lessons.lessons.forEach((item) => add(item.subject, 'lessons'))
+  homework.goals.forEach((item) => add(item.subject, 'goals'))
+
+  return [...result.values()].sort((first, second) => {
+    const firstCount = first.homework + first.lessons + first.goals
+    const secondCount = second.homework + second.lessons + second.goals
+    return secondCount - firstCount || first.name.localeCompare(second.name, 'ru')
+  })
+})
+
+function progress(goal) {
+  const tasks = goalTasks(goal)
+  return tasks.length ? Math.round((tasks.filter((task) => task.done).length / tasks.length) * 100) : 0
+}
 </script>
+
 <template>
-  <div class="page"><div class="page-heading"><div><h1>Прогресс и успеваемость</h1><p>Понятная картина результатов и зон, которым нужно больше внимания.</p></div><div class="filters"><select v-model="subject"><option>Математика</option><option>Информатика</option></select><select v-model="period"><option>За 6 недель</option><option>За месяц</option><option>За четверть</option></select></div></div>
-    <section class="grid four-col"><StatCard label="Средний балл" value="4,1" detail="+0,6" icon="TrendingUp" tone="green" /><StatCard label="Выполнено заданий" value="82%" icon="CheckCircle2" /><StatCard label="Проведено занятий" value="12" icon="CalendarDays" tone="orange" /><StatCard label="Прогресс по цели" :value="`${goalProgress}%`" icon="Target" tone="rose" /></section>
-    <div class="grid two-col below"><section class="card panel"><div class="section-title"><div><h2>Динамика баллов</h2><p class="muted tiny">{{ subject }} · {{ period }}</p></div><span class="tag success">Рост</span></div><PerformanceChart :values="[48,60,58,69,67,76]" :labels="['1 июл','8 июл','15 июл','22 июл','29 июл','сегодня']" /><div class="chart-hint"><span><i></i> Оценка за работу</span><b>Текущий результат: 4</b></div></section><section class="card panel"><div class="section-title"><h2>Цель на четверть</h2><span class="tag">{{ goalProgress }}%</span></div><h3>{{ goal.title }}</h3><p class="muted tiny goal-copy">Срок: {{ goal.deadline }} · с Марией Ивановой</p><ProgressBar :value="goalProgress" /><div class="goal-points"><span v-for="task in goal.tasks" :key="task.id" :class="{ done: task.done }"><i></i>{{ task.label }}</span></div></section></div>
-    <div class="grid two-col below"><section class="card panel"><div class="section-title"><h2>Освоенные темы</h2><BookOpen :size="18" class="light-icon" /></div><div class="skills"><div><b>Обыкновенные дроби</b><span>Уверенно</span></div><div><b>Проценты</b><span>Уверенно</span></div><div><b>Линейные уравнения</b><span class="process">В работе</span></div></div></section><section class="card panel"><div class="section-title"><h2>Комментарий репетитора</h2><Sparkles :size="18" class="light-icon" /></div><p class="teacher-note">Анна стала внимательнее проверять решение и увереннее объясняет ход мысли. Следующий фокус — больше практики с уравнениями.</p><span class="note-date">Мария Иванова · 30 июля</span></section></div>
+  <div class="page">
+    <div class="page-heading">
+      <div>
+        <h1>Прогресс и успеваемость</h1>
+        <p>{{ scopeText }}</p>
+      </div>
+    </div>
+
+    <section class="grid four-col">
+      <StatCard
+        label="Средний результат"
+        :value="averageScore === null ? '—' : `${averageScore}%`"
+        icon="TrendingUp"
+        tone="green"
+      />
+      <StatCard label="Сдано или проверено" :value="completedHomework" icon="CheckCircle2" />
+      <StatCard label="Проведено занятий" :value="heldLessons" icon="CalendarDays" tone="orange" />
+      <StatCard label="Прогресс по целям" :value="`${goalProgress}%`" icon="Target" tone="rose" />
+    </section>
+
+    <section v-if="hasData" class="grid two-col below">
+      <section class="card panel">
+        <div class="section-title">
+          <div>
+            <h2>Результаты проверок</h2>
+            <p class="muted tiny">Показываются только сохранённые оценки.</p>
+          </div>
+          <span class="tag">{{ gradedHomework.length }}</span>
+        </div>
+
+        <div v-if="gradedHomework.length" class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Задание</th><th>Предмет</th><th>Оценка</th><th>Статус</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in gradedHomework" :key="item.id">
+                <td><b>{{ item.title }}</b></td>
+                <td>{{ item.subject || 'Не указан' }}</td>
+                <td>{{ item.score }}</td>
+                <td><span class="tag success">{{ item.status }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-compact">Проверенных заданий с оценкой пока нет.</div>
+      </section>
+
+      <section class="card panel">
+        <div class="section-title">
+          <h2>Учебные цели</h2>
+          <span class="tag">{{ homework.goals.length }}</span>
+        </div>
+
+        <div v-if="homework.goals.length" class="goal-list">
+          <article v-for="goal in homework.goals" :key="goal.id" class="goal-item">
+            <div class="goal-head">
+              <div>
+                <b>{{ goal.title }}</b>
+                <span>{{ goal.subject || 'Предмет не указан' }} · {{ goalTasks(goal).filter((task) => task.done).length }} из {{ goalTasks(goal).length }} шагов</span>
+              </div>
+              <strong>{{ progress(goal) }}%</strong>
+            </div>
+            <ProgressBar :value="progress(goal)" :show-label="false" />
+          </article>
+        </div>
+        <div v-else class="empty-compact">Учебные цели пока не добавлены.</div>
+      </section>
+    </section>
+
+    <section v-if="hasData" class="card panel below">
+      <div class="section-title">
+        <h2>Данные по предметам</h2>
+        <BookOpen :size="18" class="light-icon" />
+      </div>
+
+      <div v-if="subjects.length" class="subjects">
+        <article v-for="item in subjects" :key="item.name" class="subject-item">
+          <b>{{ item.name }}</b>
+          <span>Занятий: {{ item.lessons }} · заданий: {{ item.homework }} · целей: {{ item.goals }}</span>
+        </article>
+      </div>
+      <div v-else class="empty-compact">В занятиях, заданиях и целях пока не указан предмет.</div>
+    </section>
+
+    <section v-else class="card">
+      <EmptyState
+        title="Данных о прогрессе пока нет"
+        text="Они появятся после создания занятий, заданий или учебных целей."
+      />
+    </section>
   </div>
 </template>
+
 <style scoped>
-.filters{display:flex;gap:8px}.filters select{min-height:39px;padding:0 30px 0 10px;border:1px solid var(--border);border-radius:10px;color:#655b72;background:#fff;font-size:11px;font-weight:700}.below{margin-top:19px}.section-title p{margin:3px 0 0}.chart-hint{display:flex;justify-content:space-between;margin:15px 10px 0;color:var(--text-secondary);font-size:10px}.chart-hint i{display:inline-block;width:8px;height:8px;background:var(--primary);border-radius:50%}.goal-copy{margin:4px 0 17px}.goal-points{display:grid;gap:10px;margin-top:18px}.goal-points span{display:flex;align-items:center;gap:7px;color:var(--text-secondary);font-size:10px}.goal-points i{width:8px;height:8px;border:1px solid #c8c0d1;border-radius:50%}.goal-points .done{color:var(--text-main)}.goal-points .done i{border-color:#75b798;background:#75b798}.skills{display:grid;gap:11px}.skills>div{display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid var(--border)}.skills>div:last-child{border-bottom:0;padding-bottom:0}.skills b{font-size:11px}.skills span{padding:4px 7px;color:#4c8666;background:#e8f5ee;border-radius:100px;font-size:9px;font-weight:800}.skills span.process{color:#a77a32;background:#fcf4e5}.light-icon{color:var(--primary);}.teacher-note{margin:8px 0 14px;padding-left:12px;border-left:3px solid #d8cdf1;color:#5f556b;font-size:11px;line-height:1.7}.note-date{color:var(--text-secondary);font-size:10px}@media(max-width:720px){.filters{margin-top:14px}.filters select{flex:1;min-width:0}.chart-hint{display:block;line-height:1.8}}
+.below{margin-top:19px}.section-title p{margin:3px 0 0}.goal-list{display:grid;gap:14px}.goal-item{padding:13px;border:1px solid var(--border);border-radius:13px;background:#fcfbfe}.goal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.goal-head b,.goal-head span{display:block}.goal-head b{font-size:12px}.goal-head span{margin-top:4px;color:var(--text-secondary);font-size:10px}.goal-head strong{font-size:13px}.subjects{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.subject-item{padding:14px;border:1px solid var(--border);border-radius:13px;background:#fcfbfe}.subject-item b,.subject-item span{display:block}.subject-item b{font-size:12px}.subject-item span{margin-top:4px;color:var(--text-secondary);font-size:10px;line-height:1.5}.light-icon{color:var(--primary)}@media(max-width:850px){.subjects{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.subjects{grid-template-columns:1fr}}
 </style>
