@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import LocalAdminSetupView from '../views/LocalAdminSetupView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import ScheduleView from '../views/ScheduleView.vue'
 import HomeworkView from '../views/HomeworkView.vue'
@@ -17,6 +18,7 @@ const routes = [
   { path: '/', redirect: '/dashboard' },
   { path: '/login', component: LoginView, meta: { public: true } },
   { path: '/register', component: RegisterView, meta: { public: true } },
+  { path: '/setup-admin', component: LocalAdminSetupView, meta: { public: true } },
   {
     path: '/', component: MainLayout,
     children: [
