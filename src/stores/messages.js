@@ -1,13 +1,25 @@
 import { defineStore } from 'pinia'
-import { initialMessages, notifications } from '../data/mockData'
 import { api } from '../api'
 
 export const useMessagesStore = defineStore('messages', {
-  state: () => ({ messages: [...initialMessages], notifications: [...notifications], toast: null }),
+  state: () => ({ messages: [], dialogs: [], contacts: [], notifications: [], toast: null }),
   actions: {
-    async loadMessages(dialogId = 1) {
+    async loadMessages(dialogId) {
       const data = await api(`/messages?dialog_id=${dialogId}`)
       this.messages = data.items
+    },
+    async loadDialogs() {
+      const data = await api('/conversations')
+      this.dialogs = data.items
+    },
+    async loadContacts() {
+      const data = await api('/chat/contacts')
+      this.contacts = data.items
+    },
+    async startConversation(recipientId) {
+      const data = await api('/conversations', { method: 'POST', body: JSON.stringify({ recipientId }) })
+      await this.loadDialogs()
+      return data.item
     },
     async loadNotifications() {
       const data = await api('/notifications')
@@ -16,6 +28,12 @@ export const useMessagesStore = defineStore('messages', {
     async send(dialogId, text) {
       const data = await api('/messages', { method: 'POST', body: JSON.stringify({ dialogId, text }) })
       this.messages.push(data.item)
+      const dialog = this.dialogs.find((item) => item.id === dialogId)
+      if (dialog) {
+        dialog.last = data.item.text
+        dialog.time = data.item.time
+        dialog.unread = 0
+      }
     },
     async markAllRead() {
       await api('/notifications', { method: 'PATCH', body: JSON.stringify({ all: true }) })
