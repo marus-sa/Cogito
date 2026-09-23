@@ -37,6 +37,9 @@ class PostgresDatabase:
     def commit(self):
         self.connection.commit()
 
+    def rollback(self):
+        self.connection.rollback()
+
     def close(self):
         self.connection.close()
 
@@ -177,6 +180,7 @@ SQLITE_SCHEMA = [
         lesson_date TEXT NOT NULL,
         duration TEXT NOT NULL,
         video INTEGER DEFAULT 0,
+        video_link TEXT,
         shots INTEGER DEFAULT 0,
         status TEXT NOT NULL,
         topic TEXT NOT NULL
@@ -194,15 +198,30 @@ SQLITE_SCHEMA = [
 ]
 
 
-POSTGRES_SCHEMA = [
-    statement.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-    for statement in SQLITE_SCHEMA
-]
+def postgres_schema_statement(statement):
+    """Переводит общую SQLite-схему в синтаксис PostgreSQL.
+
+    Большинство типов в нашей небольшой схеме совпадают. Но PostgreSQL не
+    разрешает назначать TIMESTAMP-выражение CURRENT_TIMESTAMP колонке типа
+    TEXT, поэтому это отличие нельзя оставлять простой заменой AUTOINCREMENT.
+    """
+    return (
+        statement
+        .replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        .replace(
+            "created_at TEXT DEFAULT CURRENT_TIMESTAMP",
+            "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+        )
+    )
+
+
+POSTGRES_SCHEMA = [postgres_schema_statement(statement) for statement in SQLITE_SCHEMA]
 
 
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_conversation_members_user_id ON conversation_members(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_homework_student_id ON homework(student_id)",
     "CREATE INDEX IF NOT EXISTS idx_homework_tutor_id ON homework(tutor_id)",
     "CREATE INDEX IF NOT EXISTS idx_lessons_student_id ON lessons(student_id)",
@@ -220,7 +239,7 @@ UPGRADE_COLUMNS = {
     "goals": {"student_id": "INTEGER", "tutor_id": "INTEGER"},
     "messages": {"sender_id": "INTEGER"},
     "notifications": {"user_id": "INTEGER"},
-    "review_lessons": {"tutor_id": "INTEGER"},
+    "review_lessons": {"tutor_id": "INTEGER", "video_link": "TEXT"},
 }
 
 
@@ -247,9 +266,10 @@ def start_database():
     upgrade_old_database(db)
     for statement in INDEXES:
         db.execute(statement)
-    if is_production():
+    has_bootstrap_admin = bool(os.environ.get("ADMIN_EMAIL") or os.environ.get("ADMIN_BOOTSTRAP_PASSWORD"))
+    if is_production() or has_bootstrap_admin:
         seed_production_admin(db)
-    else:
+    elif os.environ.get("COGITO_DEMO_DATA") == "1":
         seed_demo_data(db)
     db.commit()
     db.close()
@@ -305,7 +325,7 @@ def seed_demo_data(db):
         return
 
     demo_users = [
-        make_demo_user("Анна", "Смирнова", "anna@cogito.ru", "student", "7", "Математика", "Пн, Ср · после 17:00"),
+        make_demo_user("Тестовый", "Ученик", "student.demo@cogito.test", "student", "7", "Математика", "Пн, Ср · после 17:00"),
         make_demo_user("Мария", "Иванова", "maria@cogito.ru", "tutor", "11", "Математика, информатика", "Пн, Ср · после 16:00"),
         make_demo_user("Елена", "Смирнова", "elena@cogito.ru", "parent", "", "Математика", "Вечером"),
         make_demo_user("Алексей", "Петров", "alexey@cogito.ru", "mentor", "", "Координация", "Будни"),
@@ -318,7 +338,7 @@ def seed_demo_data(db):
         demo_users,
     )
 
-    student_id = get_user_id(db, "anna@cogito.ru")
+    student_id = get_user_id(db, "student.demo@cogito.test")
     tutor_id = get_user_id(db, "maria@cogito.ru")
     parent_id = get_user_id(db, "elena@cogito.ru")
     mentor_id = get_user_id(db, "alexey@cogito.ru")
@@ -328,8 +348,8 @@ def seed_demo_data(db):
         (student, tutor, student_id, tutor_id, subject, lesson_date, lesson_time, duration, status, link, topic, materials)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         [
-            ("Анна Смирнова", "Мария Иванова", student_id, tutor_id, "Математика", "Сегодня, 18:00", "18:00–19:00", "60 мин", "Запланировано", "https://telemost.yandex.ru", "Линейные уравнения", 1),
-            ("Анна Смирнова", "Мария Иванова", student_id, tutor_id, "Математика", "28 июля", "18:00–19:00", "60 мин", "Проведено", "", "Диагностическая работа", 1),
+            ("Тестовый Ученик", "Мария Иванова", student_id, tutor_id, "Математика", "Сегодня, 18:00", "18:00–19:00", "60 мин", "Запланировано", "https://telemost.yandex.ru", "Линейные уравнения", 1),
+            ("Тестовый Ученик", "Мария Иванова", student_id, tutor_id, "Математика", "28 июля", "18:00–19:00", "60 мин", "Проведено", "", "Диагностическая работа", 1),
         ],
     )
     db.executemany(
@@ -337,8 +357,8 @@ def seed_demo_data(db):
         (title, subject, student, tutor, student_id, tutor_id, issued, deadline, status, attachment, score, description)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         [
-            ("Линейные уравнения: тренировка", "Математика", "Анна Смирнова", "Мария Иванова", student_id, tutor_id, "29 июля", "3 августа", "В работе", "Карточка с заданиями.pdf", None, "Решите задания 1–12. Покажите ход решения в тетради."),
-            ("Диагностическая работа", "Математика", "Анна Смирнова", "Мария Иванова", student_id, tutor_id, "22 июля", "28 июля", "Проверено", "Диагностика.pdf", "8 / 10", "Повторить действия с дробями перед следующим занятием."),
+            ("Линейные уравнения: тренировка", "Математика", "Тестовый Ученик", "Мария Иванова", student_id, tutor_id, "29 июля", "3 августа", "В работе", "Карточка с заданиями.pdf", None, "Решите задания 1–12. Покажите ход решения в тетради."),
+            ("Диагностическая работа", "Математика", "Тестовый Ученик", "Мария Иванова", student_id, tutor_id, "22 июля", "28 июля", "Проверено", "Диагностика.pdf", "8 / 10", "Повторить действия с дробями перед следующим занятием."),
         ],
     )
     tasks = [
@@ -353,7 +373,7 @@ def seed_demo_data(db):
         ("Повысить оценку по математике с 3 до 4", "Математика", "25 августа", "Мария Иванова", student_id, tutor_id, "Уверенно решать базовые задания и выйти на твёрдую четвёрку к концу четверти.", json.dumps(tasks, ensure_ascii=False)),
     )
 
-    db.execute("INSERT INTO conversations (title) VALUES (?)", ("Анна и Мария",))
+    db.execute("INSERT INTO conversations (title) VALUES (?)", ("Тестовый ученик и Мария",))
     conversation = db.execute("SELECT id FROM conversations ORDER BY id DESC LIMIT 1").fetchone()
     dialog_id = conversation["id"]
     db.executemany(
@@ -364,7 +384,7 @@ def seed_demo_data(db):
         """INSERT INTO messages (dialog_id, sender, sender_id, text, sent_time, is_read)
         VALUES (?, ?, ?, ?, ?, ?)""",
         [
-            (dialog_id, "them", tutor_id, "Анна, добрый день! Посмотрела твою работу — есть несколько мест, которые разберём на занятии.", "12:34", 1),
+            (dialog_id, "them", tutor_id, "Добрый день! Посмотрела твою работу — есть несколько мест, которые разберём на занятии.", "12:34", 1),
             (dialog_id, "me", student_id, "Спасибо! Я попробую ещё раз решить задачи 7 и 8.", "12:37", 1),
             (dialog_id, "them", tutor_id, "Отлично, разберём на занятии! Можешь прислать фото, если что-то не получается.", "12:40", 1),
         ],
@@ -384,5 +404,5 @@ def seed_demo_data(db):
         """INSERT INTO review_lessons
         (tutor, tutor_id, tutor_initials, student, lesson_date, duration, video, shots, status, topic)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        ("Мария Иванова", tutor_id, "МИ", "Анна Смирнова", "30 июля, 18:00", "60 мин", 1, 1, "Ожидает проверки", "Дроби и проценты"),
+        ("Мария Иванова", tutor_id, "МИ", "Тестовый Ученик", "30 июля, 18:00", "60 мин", 1, 1, "Ожидает проверки", "Дроби и проценты"),
     )
