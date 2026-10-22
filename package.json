@@ -8,6 +8,8 @@
     "server": "cd server && .venv/bin/python app.py",
     "start": "gunicorn --chdir server --bind 0.0.0.0:${PORT:-5000} app:app",
     "test:api": "cd server && .venv/bin/python test_api.py",
+    "test:accounts": "cd server && .venv/bin/python test_accounts.py",
+    "test:client": "node --test tests/*.test.js",
     "build": "vite build",
     "preview": "vite preview"
   },
