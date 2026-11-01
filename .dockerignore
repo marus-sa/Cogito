@@ -1,9 +1,9 @@
 node_modules
+dist
 server/.venv
 server/data
-work
-outputs
 .git
-*.zip
+.env
+.DS_Store
 *.pyc
 __pycache__
