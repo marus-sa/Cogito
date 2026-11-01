@@ -65,7 +65,6 @@ docker compose up --build
 
 Для входа с разных устройств нужен один HTTPS-адрес с общей PostgreSQL. В Render задайте `DATABASE_URL`, `APP_URL`, `ADMIN_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` и SMTP-настройки из `.env.example`. Пароли, `.env` и файлы базы не загружаются в GitHub.
 
-Новая база и доставка писем пока не настроены. Render Free PostgreSQL действует 30 дней после создания: до истечения срока сохраните или перенесите данные. Бесплатный веб-сервис Render блокирует SMTP-порты 25/465/587; нужен поддерживаемый отправителем порт 2525 с TLS либо доработка отправки через HTTPS. [Ограничения Render](https://render.com/docs/free).
 
 ## Документы
 
