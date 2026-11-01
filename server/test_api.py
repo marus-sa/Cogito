@@ -3,21 +3,36 @@ import os
 import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import database
 from werkzeug.security import check_password_hash, generate_password_hash
 
 os.environ["COGITO_DEMO_DATA"] = "1"
+# Проверка никогда не подключается к базе из окружения работающего сайта.
+os.environ.pop("DATABASE_URL", None)
+os.environ.pop("FLASK_ENV", None)
+os.environ.pop("ADMIN_EMAIL", None)
+os.environ.pop("ADMIN_BOOTSTRAP_PASSWORD", None)
+os.environ.pop("SMTP_HOST", None)
+os.environ.pop("SMTP_PASSWORD", None)
 
 
 postgres_sessions_schema = next(
-    statement for statement in database.POSTGRES_SCHEMA
+    statement
+    for statement in database.POSTGRES_SCHEMA
     if "CREATE TABLE IF NOT EXISTS sessions" in statement
 )
 assert "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" in postgres_sessions_schema
 assert "created_at TEXT DEFAULT CURRENT_TIMESTAMP" not in postgres_sessions_schema
-assert any("CREATE TABLE IF NOT EXISTS admin_password_reset_tokens" in statement for statement in database.POSTGRES_SCHEMA)
-assert any("CREATE TABLE IF NOT EXISTS admin_password_reset_authorizations" in statement for statement in database.POSTGRES_SCHEMA)
+assert any(
+    "CREATE TABLE IF NOT EXISTS admin_password_reset_tokens" in statement
+    for statement in database.POSTGRES_SCHEMA
+)
+assert any(
+    "CREATE TABLE IF NOT EXISTS admin_password_reset_authorizations" in statement
+    for statement in database.POSTGRES_SCHEMA
+)
 
 
 def login(app, email, role, password="cogito123"):
@@ -37,6 +52,7 @@ with TemporaryDirectory() as folder:
     database.DATABASE_FILE = database.DATA_FOLDER / "test.db"
     database.start_database()
 
+    import accounts
     from app import app
 
     guest = app.test_client()
@@ -48,7 +64,12 @@ with TemporaryDirectory() as folder:
     assert student.get("/api/auth/me").status_code == 200
     assert student.post("/api/lessons", json={}).status_code == 403
     assert len(student.get("/api/lessons").json["items"]) == 2
-    assert student.post("/api/messages", json={"dialogId": 1, "text": "Проверка сообщения"}).status_code == 201
+    assert (
+        student.post(
+            "/api/messages", json={"dialogId": 1, "text": "Проверка сообщения"}
+        ).status_code
+        == 201
+    )
     assert student.get("/api/messages?dialog_id=999").status_code == 403
 
     tutor = login(app, "maria@cogito.ru", "tutor")
@@ -81,7 +102,8 @@ with TemporaryDirectory() as folder:
     assert review.json["item"]["videoLink"] == "https://drive.google.com/file/d/test-recording/view"
     reports = tutor.get("/api/review-lessons")
     assert any(
-        item["id"] == review.json["item"]["id"] and item["videoLink"] == review.json["item"]["videoLink"]
+        item["id"] == review.json["item"]["id"]
+        and item["videoLink"] == review.json["item"]["videoLink"]
         for item in reports.json["items"]
     )
     bad_review = tutor.post("/api/review-lessons", json={"videoLink": "file:///private/video.mp4"})
@@ -91,33 +113,52 @@ with TemporaryDirectory() as folder:
     checked = mentor.patch("/api/review-lessons/1", json={"status": "Проверено"})
     assert checked.status_code == 200
 
-    new_student = guest.post(
-        "/api/auth/register",
-        json={
-            "firstName": "Новая",
-            "lastName": "Ученица",
-            "email": "new.student@example.ru",
-            "password": "long-enough-password",
-            "role": "student",
-            "consent": True,
-        },
-    )
+    with patch.object(
+        accounts, "send_verification_email", return_value="sent"
+    ) as send_verification:
+        new_student = guest.post(
+            "/api/auth/register",
+            json={
+                "firstName": "Новая",
+                "lastName": "Ученица",
+                "email": "new.student@example.ru",
+                "password": "long-enough-password",
+                "role": "student",
+                "consent": True,
+            },
+        )
+        student_token = send_verification.call_args.args[1]
     assert new_student.status_code == 201
     assert new_student.json["needsApproval"] is False
+    assert new_student.json["verificationRequired"] is True
+    assert new_student.json["emailStatus"] == "sent"
+    assert "cogito_session=" not in new_student.headers.get("Set-Cookie", "")
+    confirmed_student = guest.post("/api/auth/verify-email", json={"token": student_token})
+    assert confirmed_student.status_code == 200
+    assert confirmed_student.json["verified"] is True
+    assert "cogito_session=" in confirmed_student.headers["Set-Cookie"]
 
-    tutor_application = app.test_client().post(
-        "/api/auth/register",
-        json={
-            "firstName": "Новый",
-            "lastName": "Репетитор",
-            "email": "new.tutor@example.ru",
-            "password": "long-enough-password",
-            "role": "tutor",
-            "consent": True,
-        },
-    )
+    tutor_guest = app.test_client()
+    with patch.object(
+        accounts, "send_verification_email", return_value="sent"
+    ) as send_verification:
+        tutor_application = tutor_guest.post(
+            "/api/auth/register",
+            json={
+                "firstName": "Новый",
+                "lastName": "Репетитор",
+                "email": "new.tutor@example.ru",
+                "password": "long-enough-password",
+                "role": "tutor",
+                "consent": True,
+            },
+        )
+        tutor_token = send_verification.call_args.args[1]
     assert tutor_application.status_code == 201
     assert tutor_application.json["needsApproval"] is True
+    confirmed_tutor = tutor_guest.post("/api/auth/verify-email", json={"token": tutor_token})
+    assert confirmed_tutor.status_code == 200
+    assert confirmed_tutor.json["needsApproval"] is True
 
     admin = login(app, "sofia@cogito.ru", "admin")
     dashboard = admin.get("/api/admin/dashboard")
@@ -127,21 +168,42 @@ with TemporaryDirectory() as folder:
     assert isinstance(dashboard.json["subjects"], list)
     pending = admin.get("/api/admin/users?status=pending")
     assert pending.status_code == 200
-    pending_tutor = next(item for item in pending.json["items"] if item["email"] == "new.tutor@example.ru")
-    assert admin.patch(f"/api/admin/users/{pending_tutor['id']}", json={"accountStatus": "active"}).status_code == 200
-    assert login(app, "new.tutor@example.ru", "tutor", "long-enough-password").get("/api/auth/me").status_code == 200
-    assert any(item["title"] == "Новая заявка репетитора" for item in admin.get("/api/notifications").json["items"])
+    pending_tutor = next(
+        item for item in pending.json["items"] if item["email"] == "new.tutor@example.ru"
+    )
+    assert (
+        admin.patch(
+            f"/api/admin/users/{pending_tutor['id']}", json={"accountStatus": "active"}
+        ).status_code
+        == 200
+    )
+    assert (
+        login(app, "new.tutor@example.ru", "tutor", "long-enough-password")
+        .get("/api/auth/me")
+        .status_code
+        == 200
+    )
+    assert any(
+        item["title"] == "Новая заявка репетитора"
+        for item in admin.get("/api/notifications").json["items"]
+    )
 
     new_student_client = login(app, "new.student@example.ru", "student", "long-enough-password")
     contacts = admin.get("/api/chat/contacts")
     assert contacts.status_code == 200
     assert any(item["id"] == new_student.json["user"]["id"] for item in contacts.json["items"])
-    conversation = admin.post("/api/conversations", json={"recipientId": new_student.json["user"]["id"]})
+    conversation = admin.post(
+        "/api/conversations", json={"recipientId": new_student.json["user"]["id"]}
+    )
     assert conversation.status_code == 201
     dialog_id = conversation.json["item"]["id"]
     student_dialogs = new_student_client.get("/api/conversations")
-    assert any(item["id"] == dialog_id for item in student_dialogs.json["items"]), student_dialogs.json
-    sent_message = new_student_client.post("/api/messages", json={"dialogId": dialog_id, "text": "Здравствуйте!"})
+    assert any(
+        item["id"] == dialog_id for item in student_dialogs.json["items"]
+    ), student_dialogs.json
+    sent_message = new_student_client.post(
+        "/api/messages", json={"dialogId": dialog_id, "text": "Здравствуйте!"}
+    )
     assert sent_message.status_code == 201, sent_message.json
     incoming = admin.get(f"/api/messages?dialog_id={dialog_id}")
     assert incoming.status_code == 200
@@ -154,8 +216,7 @@ with TemporaryDirectory() as folder:
     database.DATA_FOLDER = Path(folder)
     database.DATABASE_FILE = database.DATA_FOLDER / "legacy-review-lessons.db"
     legacy = sqlite3.connect(database.DATABASE_FILE)
-    legacy.execute(
-        """CREATE TABLE review_lessons (
+    legacy.execute("""CREATE TABLE review_lessons (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tutor TEXT NOT NULL,
         tutor_id INTEGER,
@@ -167,8 +228,7 @@ with TemporaryDirectory() as folder:
         shots INTEGER DEFAULT 0,
         status TEXT NOT NULL,
         topic TEXT NOT NULL
-        )"""
-    )
+        )""")
     legacy.execute(
         """INSERT INTO review_lessons
         (tutor, tutor_id, tutor_initials, student, lesson_date, duration, video, shots, status, topic)
@@ -294,7 +354,12 @@ try:
             """INSERT INTO users
             (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio)
             VALUES (?, ?, ?, ?, 'admin', 'active', '', '', '', '', '')""",
-            ("Второй", "Администратор", "second.admin@example.ru", generate_password_hash("another-secure-password")),
+            (
+                "Второй",
+                "Администратор",
+                "second.admin@example.ru",
+                generate_password_hash("another-secure-password"),
+            ),
         )
         db.commit()
         db.close()
@@ -321,7 +386,12 @@ try:
             """INSERT INTO users
             (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio)
             VALUES (?, ?, ?, ?, 'student', 'active', '', '', '', '', '')""",
-            ("Занятый", "Адрес", "occupied@example.ru", generate_password_hash("occupied-password")),
+            (
+                "Занятый",
+                "Адрес",
+                "occupied@example.ru",
+                generate_password_hash("occupied-password"),
+            ),
         )
         db.commit()
         db.close()
@@ -336,7 +406,9 @@ try:
         assert occupied_email.status_code == 409
         assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
         db = database.connect_db()
-        unchanged = db.execute("SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)).fetchone()
+        unchanged = db.execute(
+            "SELECT password_hash FROM users WHERE email = ?", ("owner@example.ru",)
+        ).fetchone()
         db.execute("DELETE FROM users WHERE email = ?", ("occupied@example.ru",))
         db.commit()
         db.close()
@@ -366,7 +438,10 @@ try:
         )
         assert authorized.status_code == 200
         assert authorized.json == {"authorized": True}
-        assert reset.get("/api/auth/admin-password-reset").json == {"available": True, "authorized": True}
+        assert reset.get("/api/auth/admin-password-reset").json == {
+            "available": True,
+            "authorized": True,
+        }
 
         changed = reset.post(
             "/api/auth/admin-password-reset",
@@ -379,11 +454,23 @@ try:
         assert changed.json == {"ok": True}
         assert reset.get("/api/auth/admin-password-reset").json == {"available": False}
         assert reset.get("/api/auth/me").status_code == 401
-        assert reset.post(
-            "/api/auth/login",
-            json={"email": "owner@example.ru", "password": "new-secure-password", "role": "admin"},
-        ).status_code == 400
-        assert login(app, "recovery.owner@example.ru", "admin", "new-secure-password").get("/api/auth/me").status_code == 200
+        assert (
+            reset.post(
+                "/api/auth/login",
+                json={
+                    "email": "owner@example.ru",
+                    "password": "new-secure-password",
+                    "role": "admin",
+                },
+            ).status_code
+            == 400
+        )
+        assert (
+            login(app, "recovery.owner@example.ru", "admin", "new-secure-password")
+            .get("/api/auth/me")
+            .status_code
+            == 200
+        )
 
         db = database.connect_db()
         reset_rows = db.execute(
@@ -392,13 +479,16 @@ try:
         authorization_rows = db.execute(
             "SELECT token_fingerprint, expires_at FROM admin_password_reset_authorizations"
         ).fetchall()
-        updated = db.execute("SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)).fetchone()
+        updated = db.execute(
+            "SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)
+        ).fetchone()
         db.close()
         assert len(reset_rows) == 1
         assert authorization_rows == []
-        assert reset_rows[0]["token_fingerprint"] == hashlib.sha256(
-            b"test-only-one-time-reset-token-123456"
-        ).hexdigest()
+        assert (
+            reset_rows[0]["token_fingerprint"]
+            == hashlib.sha256(b"test-only-one-time-reset-token-123456").hexdigest()
+        )
         assert "test-only-one-time-reset-token-123456" not in reset_rows[0]["token_fingerprint"]
         assert reset_rows[0]["used_at"]
         assert check_password_hash(updated["password_hash"], "new-secure-password")
@@ -413,7 +503,9 @@ try:
         )
         assert reused.status_code == 403
         db = database.connect_db()
-        after_reuse = db.execute("SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)).fetchone()
+        after_reuse = db.execute(
+            "SELECT password_hash FROM users WHERE email = ?", ("recovery.owner@example.ru",)
+        ).fetchone()
         db.close()
         assert check_password_hash(after_reuse["password_hash"], "new-secure-password")
 finally:
