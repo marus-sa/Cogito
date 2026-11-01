@@ -1,62 +1,83 @@
 import { defineStore } from 'pinia'
-import { roles } from '../data/mockData'
-import { api } from '../api'
+import { roles } from '../config.js'
+import { api, resetAccountRequests } from '../api.js'
+import { initialsFromName } from '../helpers.js'
+import { useLessonsStore } from './lessons.js'
+import { useHomeworkStore } from './homework.js'
+import { useMessagesStore } from './messages.js'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    roleKey: localStorage.getItem('cogito-role') || 'student',
-    isAuthenticated: Boolean(localStorage.getItem('cogito-auth')),
+    roleKey: 'student',
+    isAuthenticated: false,
     profile: null,
   }),
   getters: {
     user(state) {
       const role = roles[state.roleKey]
       if (!state.profile) return role
-      const words = state.profile.name.split(' ')
-      return { ...role, ...state.profile, initials: words.map((word) => word[0]).join('').slice(0, 2) }
+      return { ...role, ...state.profile, initials: initialsFromName(state.profile.name) }
     },
-    roleLabel(state) { return roles[state.roleKey]?.label || 'Участник' },
+    roleLabel(state) {
+      return roles[state.roleKey]?.label || 'Участник'
+    },
   },
   actions: {
     setLogin(user) {
+      if (this.profile?.id !== user.id || this.roleKey !== user.role) this.clearAccountData()
       this.roleKey = user.role
       this.profile = user
       this.isAuthenticated = true
-      localStorage.setItem('cogito-role', user.role)
-      localStorage.setItem('cogito-auth', 'true')
     },
-    async login(email, password, role, remember) {
-      const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, role, remember }) })
+    async login(email, password, remember) {
+      const data = await api('/auth/login', {
+        method: 'POST',
+        body: { email, password, remember },
+      })
       this.setLogin(data.user)
     },
     async register(form) {
-      const data = await api('/auth/register', { method: 'POST', body: JSON.stringify(form) })
-      if (!data.needsApproval) this.setLogin(data.user)
+      return api('/auth/register', { method: 'POST', body: form })
+    },
+    async verifyEmail(token) {
+      const data = await api('/auth/verify-email', { method: 'POST', body: { token } })
+      if (data.user.accountStatus === 'active') this.setLogin(data.user)
       return data
     },
+    async resendEmailVerification(email) {
+      return api('/auth/resend-email-verification', { method: 'POST', body: { email } })
+    },
     async restore() {
-      if (!localStorage.getItem('cogito-auth')) return false
+      // Сервер узнаёт пользователя по cookie. Отдельный флаг в браузере не нужен.
       try {
         const data = await api('/auth/me')
         this.setLogin(data.user)
         return true
-      } catch {
+      } catch (error) {
+        if (error.code === 'account_changed') return this.isAuthenticated
         this.clearLogin()
         return false
       }
     },
     clearLogin() {
+      this.clearAccountData()
       this.profile = null
       this.isAuthenticated = false
-      localStorage.removeItem('cogito-auth')
-      localStorage.removeItem('cogito-role')
+      this.roleKey = 'student'
+    },
+    clearAccountData() {
+      resetAccountRequests()
+      useLessonsStore().$reset()
+      useHomeworkStore().$reset()
+      useMessagesStore().$reset()
     },
     async logout() {
-      try { await api('/auth/logout', { method: 'POST' }) } catch { /* Сервер может быть уже выключен. */ }
+      // При обрыве сети не обещаем выход: серверная сессия ещё может действовать.
+      await api('/auth/logout', { method: 'POST' })
       this.clearLogin()
     },
     async updateProfile(form) {
-      const data = await api('/profile', { method: 'PUT', body: JSON.stringify({ ...this.profile, ...form }) })
+      const data = await api('/profile', { method: 'PUT', body: form })
       this.profile = data.user
     },
   },
