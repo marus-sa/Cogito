@@ -3,7 +3,8 @@ FROM node:22-alpine AS frontend
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY . ./
+COPY index.html vite.config.js ./
+COPY src ./src
 RUN npm run build
 
 FROM python:3.13-slim
@@ -18,7 +19,9 @@ RUN pip install --no-cache-dir -r server/requirements.txt
 COPY server ./server
 COPY --from=frontend /app/dist ./dist
 
-RUN useradd --create-home cogito
+RUN useradd --create-home cogito \
+    && mkdir -p /app/server/data \
+    && chown cogito:cogito /app/server/data
 USER cogito
 EXPOSE 5000
 
