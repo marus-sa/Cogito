@@ -68,6 +68,6 @@ docker compose up --build
 
 ## Документы
 
-[Финальная заявка](final_msagalaeva_application.md) · [Сценарии](final_msagalaeva_userscripts.md) · [Проверка готовности](project_review.md) · [Архив](OLD/README.md).
+[Финальная заявка](final_msagalaeva_application.md) · [Сценарии](final_msagalaeva_userscripts.md) · [Архив](OLD/README.md).
 
 Документы обновлены 1 ноября 2026 года. Публикация кода не означает готовности сайта; сверка с заявкой в 2359, итоговый отчёт, видео и презентация остаются отдельными задачами.
