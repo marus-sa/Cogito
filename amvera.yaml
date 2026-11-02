@@ -1,0 +1,5 @@
+build:
+  dockerfile: Dockerfile
+run:
+  containerPort: 5000
+  persistenceMount: /app/server/data

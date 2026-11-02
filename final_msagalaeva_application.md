@@ -63,7 +63,7 @@ Cogito — веб-приложение для бесплатных заняти�
 - `package.json`, `package-lock.json`, `server/requirements.txt` — зависимости проекта.
 - `.env.example` — образец настроек без настоящих паролей.
 - `server/test_*.py`, `tests/` — проверки; `.github/workflows/check.yml` — их запуск на GitHub.
-- `Dockerfile`, `docker-compose.yml` — запуск в контейнерах; `render.yaml` — настройка хостинга.
+- `Dockerfile`, `docker-compose.yml` — запуск в контейнерах; `render.yaml`, `amvera.yaml` — настройки хостинга.
 - `README.md` — инструкция; `final_msagalaeva_userscripts.md` — сценарии; `OLD/` — старые документы.
 
 ## Аналоги
