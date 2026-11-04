@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth'
 import { useMessagesStore } from '../stores/messages'
 import BaseButton from '../components/BaseButton.vue'
 import BaseModal from '../components/BaseModal.vue'
+import { emptyLesson } from '../helpers'
 
 const lessons = useLessonsStore()
 const auth = useAuthStore()
@@ -13,16 +14,7 @@ const messages = useMessagesStore()
 const modalOpen = ref(false)
 const rescheduleOpen = ref(false)
 const selectedLesson = ref(null)
-const newLesson = reactive({
-  student: '',
-  tutor: '',
-  subject: '',
-  date: '',
-  time: '',
-  duration: '60 мин',
-  link: '',
-  topic: '',
-})
+const newLesson = reactive(emptyLesson())
 const reschedule = reactive({ date: '', time: '' })
 const canCreate = computed(() => ['tutor', 'mentor', 'admin'].includes(auth.roleKey))
 const plannedCount = computed(
@@ -46,16 +38,7 @@ const statusClass = (status) =>
   ({ Проведено: 'success', Отменено: 'danger', Перенесено: 'warning' })[status] || ''
 
 function resetNewLesson() {
-  Object.assign(newLesson, {
-    student: '',
-    tutor: '',
-    subject: '',
-    date: '',
-    time: '',
-    duration: '60 мин',
-    link: '',
-    topic: '',
-  })
+  Object.assign(newLesson, emptyLesson())
 }
 
 function openCreateModal() {

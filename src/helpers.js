@@ -94,3 +94,34 @@ export function safeLink(value) {
   }
   return ''
 }
+
+// Новый объект при каждом вызове: поля разных форм не будут связаны между собой.
+export function emptyHomework() {
+  return {
+    assignment: '',
+    title: '',
+    subject: '',
+    deadline: '',
+    description: '',
+    attachment: '',
+    maxScore: 10,
+  }
+}
+
+export function emptyLesson() {
+  return {
+    student: '',
+    tutor: '',
+    subject: '',
+    date: '',
+    time: '',
+    duration: '60 мин',
+    link: '',
+    topic: '',
+  }
+}
+
+export function emptyReport() {
+  return { student: '', date: '', duration: '', topic: '', videoLink: '' }
+}
+

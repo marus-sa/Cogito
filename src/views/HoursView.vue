@@ -8,13 +8,13 @@ import BaseButton from '../components/BaseButton.vue'
 import BaseModal from '../components/BaseModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import StatCard from '../components/StatCard.vue'
-import { formatHours, safeLink, sumReportMinutes } from '../helpers'
+import { emptyReport, formatHours, safeLink, sumReportMinutes } from '../helpers'
 
 const auth = useAuthStore()
 const lessons = useLessonsStore()
 const messages = useMessagesStore()
 const modalOpen = ref(false)
-const report = reactive({ student: '', date: '', duration: '', topic: '', videoLink: '' })
+const report = reactive(emptyReport())
 const tutorMode = computed(() => auth.roleKey === 'tutor')
 const entries = computed(() => lessons.reviewLessons)
 
@@ -33,7 +33,7 @@ function statusClass(status) {
 }
 
 function resetReport() {
-  Object.assign(report, { student: '', date: '', duration: '', topic: '', videoLink: '' })
+  Object.assign(report, emptyReport())
 }
 
 async function submit() {

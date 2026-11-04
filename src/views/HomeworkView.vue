@@ -15,12 +15,13 @@ import { useHomeworkStore } from '../stores/homework'
 import { useAuthStore } from '../stores/auth'
 import { useMessagesStore } from '../stores/messages'
 import { api } from '../api'
+import { emptyHomework } from '../helpers'
 import BaseButton from '../components/BaseButton.vue'
 import BaseModal from '../components/BaseModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import HomeworkFiles from '../components/HomeworkFiles.vue'
 
-const store = useHomeworkStore()
+const homeworkStore = useHomeworkStore()
 const auth = useAuthStore()
 const messages = useMessagesStore()
 const tab = ref('Все')
@@ -35,26 +36,23 @@ const studentsError = ref('')
 const creating = ref(false)
 const sending = ref(false)
 const chosenFiles = ref([])
-const isTutor = computed(() => ['tutor', 'mentor', 'admin'].includes(auth.roleKey))
-const form = reactive({
-  assignment: '',
-  title: '',
-  subject: '',
-  deadline: '',
-  description: '',
-  attachment: '',
-  maxScore: 10,
-})
+const canManageHomework = computed(() => ['tutor', 'mentor', 'admin'].includes(auth.roleKey))
+const form = reactive(emptyHomework())
 const submission = reactive({ comment: '', link: '' })
 const grade = reactive({ score: null, comment: '', decision: 'accept' })
-const filtered = computed(() => {
-  if (tab.value === 'Все') return store.homework
-  return store.homework.filter((item) => item.status === tab.value)
-})
-const statusClass = (status) =>
-  ({ Проверено: 'success', Просрочено: 'danger', 'В работе': 'warning', Сданы: 'purple' })[
-    status
-  ] || 'gray'
+const statuses = ['Все', 'Новые', 'В работе', 'Сданы', 'Проверено', 'Просрочено']
+const filtered = computed(() => homeworkByStatus(tab.value))
+
+function homeworkByStatus(status) {
+  if (status === 'Все') return homeworkStore.homework
+  return homeworkStore.homework.filter((item) => item.status === status)
+}
+
+function statusClass(status) {
+  const colors = { Проверено: 'success', Просрочено: 'danger', 'В работе': 'warning', Сданы: 'purple' }
+  return colors[status] || 'gray'
+}
+
 const isHttpLink = (value) => /^https?:\/\//i.test(value || '')
 const assignmentKey = (item) => `${item.studentId}:${item.tutorId}`
 
@@ -86,19 +84,13 @@ async function create() {
   }
   creating.value = true
   try {
-    await store.addHomework({
-      ...form, studentId: assignment.studentId, tutorId: assignment.tutorId,
+    await homeworkStore.addHomework({
+      ...form,
+      studentId: assignment.studentId,
+      tutorId: assignment.tutorId,
     })
     createOpen.value = false
-    Object.assign(form, {
-      assignment: '',
-      title: '',
-      subject: '',
-      deadline: '',
-      description: '',
-      attachment: '',
-      maxScore: 10,
-    })
+    Object.assign(form, emptyHomework())
     messages.showToast('Домашнее задание создано')
   } catch (error) {
     messages.showToast(error.message, 'error')
@@ -125,7 +117,9 @@ async function sendWork() {
     messages.showToast('К одной работе можно прикрепить до 5 файлов', 'error')
     return
   }
-  if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) {
+  let totalSize = 0
+  for (const file of files) totalSize += file.size
+  if (totalSize > 8 * 1024 * 1024) {
     messages.showToast('Общий размер файлов — до 8 МБ. Большую работу можно отправить ссылкой.', 'error')
     return
   }
@@ -135,7 +129,7 @@ async function sendWork() {
     data.append('comment', submission.comment)
     data.append('submissionLink', submission.link)
     for (const file of chosenFiles.value) data.append('files', file)
-    await store.submitHomework(selected.value.id, data)
+    await homeworkStore.submitHomework(selected.value.id, data)
     submitOpen.value = false
     messages.showToast('Работа отправлена репетитору')
   } catch (error) {
@@ -149,7 +143,7 @@ async function removeFile(file) {
   if (sending.value || !window.confirm(`Удалить файл «${file.name}» из этой работы?`)) return
   sending.value = true
   try {
-    selected.value = await store.removeFile(selected.value.id, file.id)
+    selected.value = await homeworkStore.removeFile(selected.value.id, file.id)
   } catch (error) {
     messages.showToast(error.message, 'error')
   } finally {
@@ -172,7 +166,7 @@ async function gradeWork() {
     return
   }
   try {
-    await store.gradeHomework(selected.value.id, {
+    await homeworkStore.gradeHomework(selected.value.id, {
       decision: grade.decision,
       score: grade.decision === 'accept' ? `${grade.score} / 10` : '',
       comment: grade.comment,
@@ -201,26 +195,20 @@ function openDetails(item) {
         <h1>Домашние задания</h1>
         <p>Все задания, сроки и обратная связь от репетитора.</p>
       </div>
-      <BaseButton v-if="isTutor" @click="openCreate">
+      <BaseButton v-if="canManageHomework" @click="openCreate">
         <Plus :size="17" />
         Задать домашнее задание
       </BaseButton>
     </div>
     <section class="tabs">
       <button
-        v-for="name in ['Все', 'Новые', 'В работе', 'Сданы', 'Проверено', 'Просрочено']"
+        v-for="name in statuses"
         :key="name"
         :class="{ active: tab === name }"
         @click="tab = name"
       >
         {{ name }}
-        <span>
-          {{
-            name === 'Все'
-              ? store.homework.length
-              : store.homework.filter((i) => i.status === name).length
-          }}
-        </span>
+        <span>{{ homeworkByStatus(name).length }}</span>
       </button>
     </section>
 
@@ -264,14 +252,14 @@ function openDetails(item) {
           </span>
           <span v-else class="muted tiny">Без материалов</span>
           <BaseButton
-            v-if="isTutor && ['Сданы', 'В работе'].includes(item.status)"
+            v-if="canManageHomework && ['Сданы', 'В работе'].includes(item.status)"
             size="sm"
             @click="review(item)"
           >
             Проверить
           </BaseButton>
           <BaseButton
-            v-else-if="!isTutor && ['Новые', 'В работе', 'Сданы'].includes(item.status)"
+            v-else-if="!canManageHomework && ['Новые', 'В работе', 'Сданы'].includes(item.status)"
             size="sm"
             @click="submit(item)"
           >

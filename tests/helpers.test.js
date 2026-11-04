@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import {
   countText,
   durationInMinutes,
+  emptyHomework,
+  emptyLesson,
+  emptyReport,
   formatHours,
   initialsFromName,
   safeLink,
@@ -68,6 +71,30 @@ test('Пустые и неправильные оценки не участву�
     `${'9'.repeat(400)} / 10`,
   ]
   for (const score of scores) assert.equal(scorePercent(score), null)
+})
+
+test('Пустые формы сохраняют прежние поля и не делят данные между собой', () => {
+  const cases = [
+    [emptyHomework, {
+      assignment: '', title: '', subject: '', deadline: '',
+      description: '', attachment: '', maxScore: 10,
+    }],
+    [emptyLesson, {
+      student: '', tutor: '', subject: '', date: '', time: '',
+      duration: '60 мин', link: '', topic: '',
+    }],
+    [emptyReport, { student: '', date: '', duration: '', topic: '', videoLink: '' }],
+  ]
+  for (const [createForm, expected] of cases) {
+    const first = createForm()
+    const second = createForm()
+    assert.deepEqual(first, expected)
+    assert.notEqual(first, second)
+    for (const field of Object.keys(first)) first[field] = 'Изменено'
+    assert.deepEqual(second, expected)
+    Object.assign(first, createForm())
+    assert.deepEqual(first, expected)
+  }
 })
 
 test('Меню и поиск содержат только доступные разделы', () => {
