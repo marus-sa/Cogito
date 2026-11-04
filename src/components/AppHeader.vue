@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.vue'
 import { useAuthStore } from '../stores/auth'
 import { useMessagesStore } from '../stores/messages'
 import UserAvatar from './UserAvatar.vue'
-import { notificationPath } from '../helpers'
+import { countText, notificationPath } from '../helpers'
 
 defineEmits(['menu'])
 
@@ -120,7 +120,7 @@ function openAllNotifications() {
             <div class="search-results-head">
               <b>{{ searchText ? 'Результаты поиска' : 'Быстрый переход' }}</b>
               <small v-if="searchText">
-                {{ searchResults.length }} {{ searchResults.length === 1 ? 'раздел' : 'раздела' }}
+                {{ countText(searchResults.length, 'раздел', 'раздела', 'разделов') }}
               </small>
             </div>
             <button

@@ -11,6 +11,17 @@ export function initialsFromName(name) {
   return initials.toUpperCase() || 'УЧ'
 }
 
+export function countText(count, one, few, many) {
+  const lastTwo = Math.abs(count) % 100
+  const last = lastTwo % 10
+  let word = many
+  if (lastTwo < 11 || lastTwo > 14) {
+    if (last === 1) word = one
+    else if (last >= 2 && last <= 4) word = few
+  }
+  return `${count} ${word}`
+}
+
 export function durationInMinutes(value) {
   // В базе встречаются «60 мин», «1 ч» и «1 ч 30 мин».
   const text = String(value || '')

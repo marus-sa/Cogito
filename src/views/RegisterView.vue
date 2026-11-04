@@ -242,8 +242,8 @@ function toAccount() {
         </div>
         <div v-else-if="selectedRole === 'parent'" class="form-grid">
           <div class="field full">
-            <label>Ребёнок или код ребёнка</label>
-            <input v-model.trim="form.child" placeholder="Введите имя ребёнка или код" />
+            <label>Имя ребёнка</label>
+            <input v-model.trim="form.child" placeholder="Введите имя ребёнка" />
           </div>
         </div>
         <div v-else class="form-grid">

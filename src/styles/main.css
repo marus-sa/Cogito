@@ -297,11 +297,14 @@ td {
   .page-heading > :last-child:not(:first-child) {
     margin-top: 14px;
   }
+  .section-title {
+    flex-wrap: wrap;
+  }
   .two-col,
   .three-col,
   .four-col,
   .form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .card {
     border-radius: 18px;

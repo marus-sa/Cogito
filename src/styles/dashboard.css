@@ -1,6 +1,12 @@
 .dashboard {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 19px;
+}
+.welcome > div:first-child {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
 }
 .welcome {
   position: relative;
@@ -31,6 +37,7 @@
   margin: 5px 0 4px;
   font-size: 27px;
   letter-spacing: -0.8px;
+  overflow-wrap: anywhere;
 }
 .welcome p {
   margin: 0;
@@ -81,15 +88,22 @@
 }
 .lesson-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 11px;
   margin: 17px 0 13px;
+}
+.lesson-line > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .subject-icon {
   display: grid;
   place-items: center;
   width: 43px;
   height: 43px;
+  flex-shrink: 0;
   color: var(--primary-dark);
   background: #ede6fc;
   border-radius: 13px;
@@ -113,6 +127,7 @@
 }
 .lesson-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   color: var(--text-secondary);
   font-size: 11px;

@@ -23,7 +23,7 @@ import { api } from '../api'
 import StatCard from '../components/StatCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import UserAvatar from '../components/UserAvatar.vue'
-import { formatHours, initialsFromName, notificationPath, sumReportMinutes, uniqueNames } from '../helpers'
+import { countText, formatHours, initialsFromName, notificationPath, sumReportMinutes, uniqueNames } from '../helpers'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -204,7 +204,7 @@ onMounted(async () => {
                 <span class="subject-icon"><BookOpenCheck :size="20" /></span>
                 <div>
                   <b>{{ upcoming.subject }}</b>
-                  <small>с {{ upcoming.tutor }}</small>
+                  <small>Репетитор: {{ upcoming.tutor }}</small>
                 </div>
                 <strong>{{ upcoming.time || '—' }}</strong>
               </div>
@@ -319,7 +319,7 @@ onMounted(async () => {
         <StatCard
           label="Подтверждённых часов"
           :value="tutorVerifiedHours"
-          :detail="tutorVerifiedReports.length ? `${tutorVerifiedReports.length} отчётов` : ''"
+          :detail="tutorVerifiedReports.length ? countText(tutorVerifiedReports.length, 'отчёт', 'отчёта', 'отчётов') : ''"
           icon="Clock3"
           tone="green"
         />
@@ -594,7 +594,7 @@ onMounted(async () => {
           tone="orange"
         />
         <StatCard
-          label="Заявок ожидают"
+          label="Заявок на проверке"
           :value="adminStats.pendingApplications"
           icon="ClipboardCheck"
           tone="rose"
@@ -609,16 +609,14 @@ onMounted(async () => {
           <div class="activity">
             <span><ClipboardCheck :size="17" /></span>
             <p>
-              <b>{{ adminStats.pendingReviews }}</b>
-              отчётов о занятиях ждут проверки
+              Отчётов на проверке: <b>{{ adminStats.pendingReviews }}</b>
               <small>Данные из базы</small>
             </p>
           </div>
           <div class="activity">
             <span><CalendarDays :size="17" /></span>
             <p>
-              <b>{{ adminStats.lessons }}</b>
-              занятий создано в системе
+              Создано занятий: <b>{{ adminStats.lessons }}</b>
               <small>Всего за всё время</small>
             </p>
           </div>

@@ -47,7 +47,7 @@ const routes = [
         component: LessonsControlView,
         meta: { title: 'Контроль занятий', roles: ['mentor', 'admin'] },
       },
-      { path: 'reports', component: ReportsView, meta: { title: 'Отчёты', roles: ['admin'] } },
+      { path: 'reports', component: ReportsView, meta: { title: 'Заявки', roles: ['admin'] } },
       { path: 'notifications', component: NotificationsView, meta: { title: 'Уведомления' } },
       { path: 'profile', component: ProfileView, meta: { title: 'Профиль' } },
       { path: 'users', component: UsersView, meta: { title: 'Участники', roles: ['admin'] } },

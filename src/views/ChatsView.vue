@@ -212,6 +212,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
   overflow: hidden;
 }
 .dialogs {
+  min-width: 0;
   background: #fcfbfe;
   border-right: 1px solid var(--border);
 }
@@ -376,6 +377,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
 }
 .message {
   max-width: 73%;
+  overflow-wrap: anywhere;
   padding: 9px 10px;
   border-radius: 13px 13px 13px 3px;
   background: #f1edf7;
@@ -506,7 +508,7 @@ footer .send:hover {
     padding: 0 13px;
   }
   .chat-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 640px;
     border-right: 0;
     border-left: 0;

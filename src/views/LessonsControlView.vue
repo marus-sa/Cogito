@@ -83,7 +83,7 @@ async function verify(result) {
       </div>
       <span class="tag warning">
         <CircleAlert :size="14" />
-        {{ pendingCount }} ожидают проверки
+        На проверке: {{ pendingCount }}
       </span>
     </div>
 

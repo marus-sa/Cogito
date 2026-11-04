@@ -45,7 +45,7 @@ onMounted(loadApplications)
     <section class="card panel below">
       <div class="section-title">
         <h2>Заявки репетиторов</h2>
-        <span class="tag warning">{{ pendingTutors.length }} ожидают</span>
+        <span class="tag warning">На проверке: {{ pendingTutors.length }}</span>
       </div>
       <div v-if="pendingTutors.length" class="applications">
         <article v-for="user in pendingTutors" :key="user.id">
