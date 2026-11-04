@@ -1,6 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { countText, durationInMinutes, formatHours, initialsFromName, safeLink, uniqueNames } from '../src/helpers.js'
+import {
+  countText,
+  durationInMinutes,
+  formatHours,
+  initialsFromName,
+  safeLink,
+  scorePercent,
+  uniqueNames,
+} from '../src/helpers.js'
 import { navigation, roles } from '../src/config.js'
 
 test('Инициалы берутся из первых двух слов', () => {
@@ -41,6 +49,25 @@ test('Длительность и часы считаются в минутах'
   assert.equal(formatHours(45), '45 мин')
   assert.equal(formatHours(60), '1 ч')
   assert.equal(formatHours(105), '1 ч 45 мин')
+})
+
+test('Баллы переводятся в проценты без изменения сохранённых оценок', () => {
+  const cases = [
+    ['8 / 10', 80], ['1,5 / 2', 75], ['0 / 10', 0],
+    ['12 / 10', 120], [' 3 / 4 ', 75], ['1 / 2.5', 40],
+  ]
+  for (const [score, percent] of cases) {
+    assert.equal(scorePercent(score), percent)
+  }
+})
+
+test('Пустые и неправильные оценки не участвуют в среднем результате', () => {
+  const scores = [
+    null, '', '8', 'хорошо', '8 / 0', '/ 10', '8 /', '8 / 10 / 2',
+    '-1 / 10', '+1 / 10', '1e2 / 10', '.5 / 10', '5. / 10',
+    `${'9'.repeat(400)} / 10`,
+  ]
+  for (const score of scores) assert.equal(scorePercent(score), null)
 })
 
 test('Меню и поиск содержат только доступные разделы', () => {

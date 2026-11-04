@@ -22,6 +22,22 @@ export function countText(count, one, few, many) {
   return `${count} ${word}`
 }
 
+export function scorePercent(score) {
+  // Оценка приходит строкой, например «8 / 10» или «1,5 / 2».
+  const parts = String(score || '').split('/')
+  if (parts.length !== 2) return null
+
+  const earnedText = parts[0].trim()
+  const totalText = parts[1].trim()
+  const numberPattern = /^\d+([.,]\d+)?$/
+  if (!numberPattern.test(earnedText) || !numberPattern.test(totalText)) return null
+
+  const earned = Number(earnedText.replace(',', '.'))
+  const total = Number(totalText.replace(',', '.'))
+  if (!Number.isFinite(earned) || !Number.isFinite(total) || total <= 0) return null
+  return Math.round((earned / total) * 100)
+}
+
 export function durationInMinutes(value) {
   // В базе встречаются «60 мин», «1 ч» и «1 ч 30 мин».
   const text = String(value || '')
@@ -78,4 +94,3 @@ export function safeLink(value) {
   }
   return ''
 }
-

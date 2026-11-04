@@ -4,23 +4,13 @@ import { BookOpen } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useHomeworkStore } from '../stores/homework'
 import { useLessonsStore } from '../stores/lessons'
+import { scorePercent } from '../helpers'
 import EmptyState from '../components/EmptyState.vue'
 import StatCard from '../components/StatCard.vue'
 
 const auth = useAuthStore()
 const homework = useHomeworkStore()
 const lessons = useLessonsStore()
-
-function scorePercent(score) {
-  const match = String(score || '').match(/^\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*$/)
-  if (!match) return null
-
-  const earned = Number(match[1].replace(',', '.'))
-  const total = Number(match[2].replace(',', '.'))
-  if (!Number.isFinite(earned) || !Number.isFinite(total) || total <= 0) return null
-
-  return Math.round((earned / total) * 100)
-}
 
 const scopeText = computed(() => {
   const texts = {
@@ -34,11 +24,14 @@ const scopeText = computed(() => {
 })
 
 const gradedHomework = computed(() => homework.homework.filter((item) => item.score))
-const scoredHomework = computed(() =>
-  gradedHomework.value
-    .map((item) => ({ ...item, percent: scorePercent(item.score) }))
-    .filter((item) => item.percent !== null),
-)
+const scoredHomework = computed(() => {
+  const results = []
+  for (const item of gradedHomework.value) {
+    const percent = scorePercent(item.score)
+    if (percent !== null) results.push({ ...item, percent })
+  }
+  return results
+})
 const averageScore = computed(() => {
   if (!scoredHomework.value.length) return null
   let total = 0
@@ -52,12 +45,12 @@ const heldLessons = computed(
   () => lessons.lessons.filter((item) => item.status === 'Проведено').length,
 )
 const hasData = computed(
-  () => homework.homework.length || lessons.lessons.length,
+  () => homework.homework.length > 0 || lessons.lessons.length > 0,
 )
 
 const subjects = computed(() => {
   const result = []
-  function add(subject, type) {
+  function addSubject(subject, type) {
     const name = String(subject || '').trim()
     if (!name) return
     let item = result.find((item) => item.name === name)
@@ -68,8 +61,8 @@ const subjects = computed(() => {
     item[type] += 1
   }
 
-  for (const item of homework.homework) add(item.subject, 'homework')
-  for (const item of lessons.lessons) add(item.subject, 'lessons')
+  for (const item of homework.homework) addSubject(item.subject, 'homework')
+  for (const item of lessons.lessons) addSubject(item.subject, 'lessons')
 
   return result.sort((first, second) => {
     const firstCount = first.homework + first.lessons
