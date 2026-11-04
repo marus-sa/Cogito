@@ -10,6 +10,16 @@ from database import connect_db, is_production
 
 
 COOKIE_NAME = "cogito_session"
+MOSCOW_TIME = timezone(timedelta(hours=3))
+
+
+def message_time(value):
+    """Показывает время сообщения по Москве, независимо от часового пояса сервера."""
+    try:
+        moment = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value
+    return moment.astimezone(MOSCOW_TIME).strftime("%H:%M")
 
 
 ROLE_LABELS = {
@@ -40,9 +50,9 @@ def row_to_dict(row):
     if "lesson_time" in item:
         item["time"] = item.pop("lesson_time")
     if "created_time" in item:
-        item["time"] = item.pop("created_time")
+        item["time"] = message_time(item.pop("created_time"))
     if "sent_time" in item:
-        item["time"] = item.pop("sent_time")
+        item["time"] = message_time(item.pop("sent_time"))
     if "tutor_initials" in item:
         item["tutorInitials"] = item.pop("tutor_initials")
     if "video_link" in item:
@@ -209,10 +219,20 @@ def mentor_can_manage_tutor(db, tutor_id):
 
 
 def user_by_name(db, name, role):
+    if not isinstance(name, str):
+        return None
     return db.execute(
         """SELECT * FROM users WHERE first_name || ' ' || last_name = ? AND role = ?
         AND account_status = 'active' AND email_verified_at IS NOT NULL""",
         (name.strip(), role),
+    ).fetchone()
+
+
+def user_by_id(db, user_id, role):
+    return db.execute(
+        """SELECT * FROM users WHERE id = ? AND role = ?
+        AND account_status = 'active' AND email_verified_at IS NOT NULL""",
+        (user_id, role),
     ).fetchone()
 
 

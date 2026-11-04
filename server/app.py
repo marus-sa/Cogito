@@ -28,6 +28,11 @@ app.register_blueprint(study)
 app.register_blueprint(chat)
 
 
+@app.errorhandler(413)
+def request_too_large(error):
+    return jsonify({"error": "Запрос слишком большой. Уменьшите размер прикреплённых файлов."}), 413
+
+
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True})

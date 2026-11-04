@@ -7,7 +7,7 @@
 from demo import seed_demo_data
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from werkzeug.security import generate_password_hash
@@ -191,6 +191,13 @@ SQLITE_SCHEMA = [
         tutor_id INTEGER NOT NULL,
         PRIMARY KEY (student_id, tutor_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS homework_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        homework_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        storage_name TEXT NOT NULL UNIQUE,
+        size INTEGER NOT NULL
+    )""",
     """CREATE TABLE IF NOT EXISTS admin_password_reset_tokens (
         token_fingerprint TEXT PRIMARY KEY,
         admin_user_id INTEGER NOT NULL,
@@ -240,6 +247,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_messages_dialog_id ON messages(dialog_id)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_student_tutors_tutor_id ON student_tutors(tutor_id)",
+    "CREATE INDEX IF NOT EXISTS idx_homework_files_homework_id ON homework_files(homework_id)",
     "CREATE INDEX IF NOT EXISTS idx_admin_reset_authorizations_expires_at ON admin_password_reset_authorizations(expires_at)",
     "CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_expires_at ON email_verification_tokens(expires_at)",
 ]
@@ -327,6 +335,27 @@ def add_existing_student_tutor_links(db):
     )
 
 
+def fix_old_message_times(db):
+    """Старый сервер записывал только часы и минуты по UTC. Сдвигаем их один раз."""
+    migration_key = "message-times-msk-v1"
+    if not is_production() or db.execute(
+        "SELECT 1 FROM app_migrations WHERE migration_key = ?", (migration_key,)
+    ).fetchone():
+        return
+    for table, column in [("messages", "sent_time"), ("notifications", "created_time")]:
+        for row in db.execute(f"SELECT id, {column} FROM {table}").fetchall():
+            try:
+                old = datetime.strptime(row[column], "%H:%M")
+            except (TypeError, ValueError):
+                continue
+            updated = (old + timedelta(hours=3)).strftime("%H:%M")
+            db.execute(f"UPDATE {table} SET {column} = ? WHERE id = ?", (updated, row["id"]))
+    db.execute(
+        "INSERT INTO app_migrations (migration_key, applied_at) VALUES (?, ?)",
+        (migration_key, datetime.now(timezone.utc).isoformat()),
+    )
+
+
 def start_database():
     db = connect_db()
     schema = POSTGRES_SCHEMA if is_postgres() else SQLITE_SCHEMA
@@ -335,6 +364,7 @@ def start_database():
     upgrade_old_database(db)
     mark_existing_users_as_verified(db)
     add_existing_student_tutor_links(db)
+    fix_old_message_times(db)
     for statement in INDEXES:
         db.execute(statement)
     has_bootstrap_admin = bool(

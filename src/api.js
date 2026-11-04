@@ -7,14 +7,16 @@ export function resetAccountRequests() {
 
 export async function api(url, options = {}) {
   const requestVersion = accountVersion
+  const isFileUpload = options.body instanceof FormData
   const request = {
     ...options,
     credentials: 'same-origin',
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json', ...options.headers },
   }
+  if (isFileUpload) delete request.headers['Content-Type']
   // Страницы передают обычный объект. В JSON переводим только здесь.
-  if (request.body && typeof request.body !== 'string') {
+  if (request.body && typeof request.body !== 'string' && !isFileUpload) {
     request.body = JSON.stringify(request.body)
   }
   const response = await fetch(`/api${url}`, request)
@@ -23,7 +25,11 @@ export async function api(url, options = {}) {
   try {
     data = await response.json()
   } catch {
-    data = { error: 'Сервер вернул непонятный ответ' }
+    data = {
+      error: response.status === 413
+        ? 'Файлы слишком большие. Отправьте работу меньшего размера или ссылку на диск.'
+        : 'Сервер вернул непонятный ответ',
+    }
   }
 
   if (requestVersion !== accountVersion) {

@@ -140,7 +140,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
           </div>
         </header>
         <div v-if="messages.length" class="message-area">
-          <div class="date-separator">Переписка</div>
+          <div class="date-separator">Время сообщений — московское (МСК)</div>
           <div
             v-for="message in messages"
             :key="message.id"

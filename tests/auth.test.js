@@ -16,6 +16,20 @@ beforeEach(() => {
   globalThis.window = new EventTarget()
 })
 
+test('Файл отправляется как FormData без подмены на JSON', async () => {
+  const body = new FormData()
+  body.append('comment', 'Моя работа')
+  body.append('files', new Blob(['answer']), 'answer.txt')
+  globalThis.fetch = async (url, request) => {
+    assert.equal(url, '/api/homework/1/submit')
+    assert.equal(request.body, body)
+    assert.equal(request.headers['Content-Type'], undefined)
+    assert.equal(request.credentials, 'same-origin')
+    return response({ item: { id: 1, submissionFiles: [] } })
+  }
+  await api('/homework/1/submit', { method: 'PATCH', body })
+})
+
 test('Вход использует роль сервера и обычный объект запроса', async () => {
   globalThis.fetch = async (url, request) => {
     assert.equal(url, '/api/auth/login')

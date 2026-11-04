@@ -14,9 +14,11 @@ import {
 import { useHomeworkStore } from '../stores/homework'
 import { useAuthStore } from '../stores/auth'
 import { useMessagesStore } from '../stores/messages'
+import { api } from '../api'
 import BaseButton from '../components/BaseButton.vue'
 import BaseModal from '../components/BaseModal.vue'
 import EmptyState from '../components/EmptyState.vue'
+import HomeworkFiles from '../components/HomeworkFiles.vue'
 
 const store = useHomeworkStore()
 const auth = useAuthStore()
@@ -27,9 +29,15 @@ const submitOpen = ref(false)
 const gradeOpen = ref(false)
 const detailsOpen = ref(false)
 const selected = ref(null)
+const assignments = ref([])
+const loadingStudents = ref(false)
+const studentsError = ref('')
+const creating = ref(false)
+const sending = ref(false)
+const chosenFiles = ref([])
 const isTutor = computed(() => ['tutor', 'mentor', 'admin'].includes(auth.roleKey))
 const form = reactive({
-  student: '',
+  assignment: '',
   title: '',
   subject: '',
   deadline: '',
@@ -48,21 +56,42 @@ const statusClass = (status) =>
     status
   ] || 'gray'
 const isHttpLink = (value) => /^https?:\/\//i.test(value || '')
+const assignmentKey = (item) => `${item.studentId}:${item.tutorId}`
+
+async function openCreate() {
+  createOpen.value = true
+  loadingStudents.value = true
+  studentsError.value = ''
+  try {
+    const data = await api('/homework/students')
+    assignments.value = data.items
+  } catch (error) {
+    assignments.value = []
+    studentsError.value = error.message
+  } finally {
+    loadingStudents.value = false
+  }
+}
 
 async function create() {
+  if (creating.value) return
   if (!form.title.trim()) {
     messages.showToast('Укажите название задания', 'error')
     return
   }
-  if (!form.student.trim()) {
-    messages.showToast('Укажите ученика из зарегистрированных пользователей', 'error')
+  const assignment = assignments.value.find((item) => assignmentKey(item) === form.assignment)
+  if (!assignment) {
+    messages.showToast('Выберите ученика из списка', 'error')
     return
   }
+  creating.value = true
   try {
-    await store.addHomework(form)
+    await store.addHomework({
+      ...form, studentId: assignment.studentId, tutorId: assignment.tutorId,
+    })
     createOpen.value = false
     Object.assign(form, {
-      student: '',
+      assignment: '',
       title: '',
       subject: '',
       deadline: '',
@@ -73,11 +102,14 @@ async function create() {
     messages.showToast('Домашнее задание создано')
   } catch (error) {
     messages.showToast(error.message, 'error')
+  } finally {
+    creating.value = false
   }
 }
 
 function submit(item) {
   selected.value = item
+  chosenFiles.value = []
   Object.assign(submission, {
     comment: item.submissionComment || '',
     link: item.submissionLink || '',
@@ -86,15 +118,42 @@ function submit(item) {
 }
 
 async function sendWork() {
+  if (sending.value) return
+  const existing = selected.value.submissionFiles || []
+  const files = [...existing, ...chosenFiles.value]
+  if (files.length > 5) {
+    messages.showToast('К одной работе можно прикрепить до 5 файлов', 'error')
+    return
+  }
+  if (files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) {
+    messages.showToast('Общий размер файлов — до 8 МБ. Большую работу можно отправить ссылкой.', 'error')
+    return
+  }
+  sending.value = true
   try {
-    await store.submitHomework(selected.value.id, {
-      comment: submission.comment,
-      submissionLink: submission.link,
-    })
+    const data = new FormData()
+    data.append('comment', submission.comment)
+    data.append('submissionLink', submission.link)
+    for (const file of chosenFiles.value) data.append('files', file)
+    await store.submitHomework(selected.value.id, data)
     submitOpen.value = false
     messages.showToast('Работа отправлена репетитору')
   } catch (error) {
     messages.showToast(error.message, 'error')
+  } finally {
+    sending.value = false
+  }
+}
+
+async function removeFile(file) {
+  if (sending.value || !window.confirm(`Удалить файл «${file.name}» из этой работы?`)) return
+  sending.value = true
+  try {
+    selected.value = await store.removeFile(selected.value.id, file.id)
+  } catch (error) {
+    messages.showToast(error.message, 'error')
+  } finally {
+    sending.value = false
   }
 }
 
@@ -142,7 +201,7 @@ function openDetails(item) {
         <h1>Домашние задания</h1>
         <p>Все задания, сроки и обратная связь от репетитора.</p>
       </div>
-      <BaseButton v-if="isTutor" @click="createOpen = true">
+      <BaseButton v-if="isTutor" @click="openCreate">
         <Plus :size="17" />
         Задать домашнее задание
       </BaseButton>
@@ -212,11 +271,11 @@ function openDetails(item) {
             Проверить
           </BaseButton>
           <BaseButton
-            v-else-if="!isTutor && item.status === 'В работе'"
+            v-else-if="!isTutor && ['Новые', 'В работе', 'Сданы'].includes(item.status)"
             size="sm"
             @click="submit(item)"
           >
-            Сдать работу
+            {{ item.status === 'Сданы' ? 'Изменить ответ' : 'Сдать работу' }}
           </BaseButton>
           <button v-else class="view-button" @click="openDetails(item)">Подробнее</button>
         </div>
@@ -232,8 +291,18 @@ function openDetails(item) {
     <BaseModal v-model="createOpen" title="Новое домашнее задание" wide>
       <div class="form-grid">
         <div class="field">
-          <label>Ученик</label>
-          <input v-model.trim="form.student" placeholder="Полное имя зарегистрированного ученика" />
+          <label for="homework-student">Ученик</label>
+          <select id="homework-student" v-model="form.assignment" :disabled="loadingStudents">
+            <option value="" disabled>{{ loadingStudents ? 'Загрузка учеников…' : 'Выберите ученика' }}</option>
+            <option v-for="item in assignments" :key="assignmentKey(item)" :value="assignmentKey(item)">
+              {{ item.student }}{{ item.grade ? ` · ${item.grade} класс` : '' }}
+              {{ auth.roleKey === 'tutor' ? '' : ` · Репетитор: ${item.tutor}` }}
+            </option>
+          </select>
+          <small v-if="studentsError" class="field-note" role="alert">{{ studentsError }}</small>
+          <small v-else-if="!loadingStudents && !assignments.length" class="field-note">
+            Закреплённых учеников пока нет. Администратор может добавить связь «Ученик — репетитор» в «Участниках».
+          </small>
         </div>
         <div class="field">
           <label>Предмет</label>
@@ -272,13 +341,15 @@ function openDetails(item) {
       </div>
       <template #footer>
         <BaseButton variant="outline" @click="createOpen = false">Отмена</BaseButton>
-        <BaseButton @click="create">Создать задание</BaseButton>
+        <BaseButton :loading="creating" :disabled="loadingStudents || !form.assignment" @click="create">
+          Создать задание
+        </BaseButton>
       </template>
     </BaseModal>
 
     <BaseModal v-model="submitOpen" title="Сдать домашнее задание">
       <p class="modal-copy">
-        Оставьте комментарий репетитору и добавьте ссылку на выполненную работу.
+        Прикрепите файлы с выполненной работой, оставьте комментарий или добавьте ссылку.
       </p>
       <div class="field">
         <label>Комментарий</label>
@@ -299,9 +370,18 @@ function openDetails(item) {
         />
         <small class="field-note">Можно прикрепить ссылку на фото, PDF или документ.</small>
       </div>
+      <HomeworkFiles :files="selected?.submissionFiles || []" removable :busy="sending" @remove="removeFile" />
+      <div class="field">
+        <label for="homework-files">Файлы с работой</label>
+        <input id="homework-files" type="file" multiple :disabled="sending"
+          accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif"
+          @change="chosenFiles = Array.from($event.target.files || [])" />
+        <small class="field-note">PDF, DOCX, TXT и фото. До 5 файлов общим размером до 8 МБ. Большую работу отправьте ссылкой на диск.</small>
+        <p v-for="(file, index) in chosenFiles" :key="index" class="field-note">{{ file.name }}</p>
+      </div>
       <template #footer>
         <BaseButton variant="outline" @click="submitOpen = false">Отмена</BaseButton>
-        <BaseButton @click="sendWork">
+        <BaseButton :loading="sending" @click="sendWork">
           <Send :size="15" />
           Отправить
         </BaseButton>
@@ -310,6 +390,7 @@ function openDetails(item) {
 
     <BaseModal v-model="gradeOpen" title="Проверить работу">
       <p class="modal-copy">{{ selected?.title }} · {{ selected?.student }}</p>
+      <HomeworkFiles :files="selected?.submissionFiles || []" />
       <p v-if="selected?.submissionComment" class="student-note">
         <b>Комментарий ученика:</b>
         {{ selected.submissionComment }}
@@ -378,6 +459,7 @@ function openDetails(item) {
           </div>
         </dl>
         <p v-if="selected.description" class="detail-text">{{ selected.description }}</p>
+        <HomeworkFiles :files="selected.submissionFiles || []" />
         <a
           v-if="isHttpLink(selected.attachment)"
           class="submission-link"

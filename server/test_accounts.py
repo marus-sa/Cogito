@@ -1,7 +1,9 @@
 """Проверка аккаунтов на временной базе. Реальные пользователи не меняются."""
 
 import os
+import io
 import unittest
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -77,8 +79,154 @@ def new_student():
 
 class AccountTests(unittest.TestCase):
     def setUp(self):
-        database.DATABASE_FILE = database.DATA_FOLDER / f"{self._testMethodName}.db"
+        database.DATA_FOLDER = Path(test_folder.name) / self._testMethodName
+        database.DATABASE_FILE = database.DATA_FOLDER / "cogito.db"
         database.start_database()
+
+    def new_homework(self):
+        tutor, _ = sign_in("tutor")
+        response = tutor.post("/api/homework", json={
+            "student": "Тестовый Ученик", "title": "Работа с файлами", "subject": "Математика",
+        })
+        self.assertEqual(response.status_code, 201)
+        return response.json["item"]["id"]
+
+    def test_homework_student_dropdown_and_ids(self):
+        admin, _ = sign_in("admin")
+        tutor, tutor_answer = sign_in("tutor")
+        student, person = new_student()
+        student.put("/api/profile", json={"firstName": "Тестовый", "lastName": "Ученик"})
+        tutor_id = tutor_answer.json["user"]["id"]
+        pairs = tutor.get("/api/homework/students").json["items"]
+        self.assertNotIn(person["id"], {pair["studentId"] for pair in pairs})
+        link = {"kind": "student_tutor", "firstId": person["id"], "secondId": tutor_id}
+        self.assertEqual(admin.post("/api/admin/relationships", json=link).status_code, 201)
+        pairs = tutor.get("/api/homework/students").json["items"]
+        self.assertIn(person["id"], {pair["studentId"] for pair in pairs})
+        self.assertTrue(all(pair["tutorId"] == tutor_id for pair in pairs))
+        self.assertTrue(all("email" not in pair for pair in pairs))
+        payload = {"studentId": person["id"], "tutorId": tutor_id, "title": "Задание по списку"}
+        for role in ["tutor", "mentor", "admin"]:
+            client, _ = sign_in(role)
+            answer = client.post("/api/homework", json=payload)
+            self.assertEqual(answer.status_code, 201)
+            self.assertEqual(answer.json["item"]["student_id"], person["id"])
+        for role in ["student", "parent"]:
+            client, _ = sign_in(role)
+            self.assertEqual(client.get("/api/homework/students").status_code, 403)
+        self.assertEqual(tutor.post("/api/homework", json={**payload, "tutorId": 9999}).status_code, 403)
+        self.assertEqual(tutor.post("/api/homework", json={**payload, "studentId": True}).status_code, 400)
+        admin.delete("/api/admin/relationships", json=link)
+        self.assertEqual(tutor.post("/api/homework", json=payload).status_code, 403)
+        self.assertNotIn(person["id"], {pair["studentId"] for pair in tutor.get("/api/homework/students").json["items"]})
+
+    def test_homework_files_permissions_and_restart(self):
+        homework_id = self.new_homework()
+        student, _ = sign_in("student")
+        submitted = student.patch(f"/api/homework/{homework_id}/submit", data={
+            "comment": "Решение во вложениях",
+            "files": [(io.BytesIO(b"%PDF-1.4 test work"), "../../Работа.pdf"),
+                      (io.BytesIO(b"2 + 2 = 4"), "Ответ.txt")],
+        })
+        self.assertEqual(submitted.status_code, 200, submitted.json)
+        self.assertEqual(submitted.json["item"]["status"], "Сданы")
+        files = submitted.json["item"]["submissionFiles"]
+        self.assertEqual([file["name"] for file in files], ["Работа.pdf", "Ответ.txt"])
+        url = files[0]["url"]
+        for role in ACCOUNTS:
+            client, _ = sign_in(role)
+            with client.get(url) as response:
+                self.assertEqual(response.status_code, 200, role)
+                self.assertEqual(response.data, b"%PDF-1.4 test work")
+                self.assertIn("attachment", response.headers["Content-Disposition"])
+                self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(app.test_client().get(url).status_code, 401)
+        outsider, _ = new_student()
+        self.assertEqual(outsider.get(url).status_code, 404)
+        self.assertEqual(outsider.delete(url).status_code, 404)
+        self.assertEqual(outsider.patch(f"/api/homework/{homework_id}/submit", data={
+            "files": (io.BytesIO(b"another answer"), "answer.txt"),
+        }).status_code, 404)
+        database.start_database()
+        with student.get(url) as response:
+            self.assertEqual(response.data, b"%PDF-1.4 test work")
+        work = next(item for item in student.get("/api/homework").json["items"] if item["id"] == homework_id)
+        self.assertEqual(len(work["submissionFiles"]), 2)
+        tutor, _ = sign_in("tutor")
+        self.assertEqual(tutor.delete(url).status_code, 403)
+        checked = tutor.patch(f"/api/homework/{homework_id}/grade", json={"score": "8 / 10"})
+        self.assertEqual(len(checked.json["item"]["submissionFiles"]), 2)
+        self.assertEqual(student.delete(url).status_code, 409)
+        self.assertEqual(student.patch(f"/api/homework/{homework_id}/submit", json={"comment": "Изменить"}).status_code, 409)
+        tutor.patch(f"/api/homework/{homework_id}/grade", json={"decision": "revise"})
+        removed = student.delete(url)
+        self.assertEqual(removed.status_code, 200)
+        self.assertEqual(len(removed.json["item"]["submissionFiles"]), 1)
+        self.assertEqual(student.get(url).status_code, 404)
+
+    def test_homework_upload_limits_and_rollback(self):
+        homework_id = self.new_homework()
+        student, _ = sign_in("student")
+        endpoint = f"/api/homework/{homework_id}/submit"
+        for files in [
+            [(io.BytesIO(b"hello"), "answer.html")],
+            [(io.BytesIO(b""), "empty.pdf")],
+            [(io.BytesIO(b"valid"), "valid.txt"), (io.BytesIO(b"<script>"), "bad.svg")],
+            [(io.BytesIO(b"work"), f"{i}.txt") for i in range(6)],
+        ]:
+            self.assertEqual(student.patch(endpoint, data={"files": files}).status_code, 400)
+        with patch("study.MAX_FILE_SIZE", 8):
+            self.assertEqual(student.patch(endpoint, data={
+                "files": (io.BytesIO(b"too-large"), "answer.txt"),
+            }).status_code, 400)
+        with patch("study.MAX_WORK_SIZE", 32):
+            response = student.patch(endpoint, data={
+                "files": (io.BytesIO(b"x" * (2 * 1024 * 1024)), "large.txt"),
+            })
+            self.assertEqual(response.status_code, 413)
+            self.assertIn("error", response.json)
+            response.request.input_stream.close()
+            response.close()
+        with self.assertLogs(app.logger, level="ERROR"), patch(
+            "werkzeug.datastructures.FileStorage.save", side_effect=OSError("Test disk error")
+        ):
+            response = student.patch(endpoint, data={"files": (io.BytesIO(b"work"), "answer.txt")})
+            self.assertEqual(response.status_code, 500)
+        db = database.connect_db()
+        self.assertEqual(db.execute("SELECT COUNT(*) AS count FROM homework_files").fetchone()["count"], 0)
+        self.assertEqual(db.execute("SELECT status FROM homework WHERE id = ?", (homework_id,)).fetchone()["status"], "Новые")
+        db.close()
+        self.assertEqual(list((database.DATA_FOLDER / "homework-files").glob("*")), [])
+        self.assertEqual(student.patch(endpoint, json={"comment": "Ответ без файла"}).status_code, 200)
+
+    def test_chat_uses_moscow_time(self):
+        student, _ = sign_in("student")
+        tutor, _ = sign_in("tutor")
+        with patch("chat.datetime") as clock:
+            clock.now.return_value = datetime(2026, 11, 4, 21, 15, tzinfo=timezone.utc)
+            message = student.post("/api/messages", json={"dialogId": 1, "text": "Проверка времени"})
+        self.assertEqual(message.json["item"]["time"], "00:15")
+        self.assertEqual(tutor.get("/api/messages?dialog_id=1").json["items"][-1]["time"], "00:15")
+        dialog = next(item for item in tutor.get("/api/conversations").json["items"] if item["id"] == 1)
+        self.assertEqual(dialog["time"], "00:15")
+        self.assertEqual(tutor.get("/api/notifications").json["items"][0]["time"], "00:15")
+
+    def test_old_chat_time_migration_runs_once(self):
+        db = database.connect_db()
+        db.execute("UPDATE messages SET sent_time = '23:45' WHERE id = 1")
+        db.execute("UPDATE messages SET sent_time = '2026-11-04T21:15:00+00:00' WHERE id = 2")
+        db.execute("UPDATE notifications SET created_time = '23:45' WHERE id = 1")
+        db.commit()
+        db.close()
+        with patch.dict(os.environ, {"FLASK_ENV": "production"}):
+            database.start_database()
+            database.start_database()
+        db = database.connect_db()
+        self.assertEqual(db.execute("SELECT sent_time FROM messages WHERE id = 1").fetchone()["sent_time"], "02:45")
+        self.assertEqual(db.execute("SELECT sent_time FROM messages WHERE id = 2").fetchone()["sent_time"], "2026-11-04T21:15:00+00:00")
+        self.assertEqual(db.execute("SELECT created_time FROM notifications WHERE id = 1").fetchone()["created_time"], "02:45")
+        db.close()
 
     def test_all_roles_on_two_devices(self):
         for role in ACCOUNTS:

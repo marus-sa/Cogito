@@ -1,8 +1,8 @@
 """Контакты, диалоги, сообщения и уведомления."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
-from common import ROLE_COLORS, ROLE_LABELS, full_name, get_data, initials, need_login, row_to_dict
+from common import ROLE_COLORS, ROLE_LABELS, full_name, get_data, initials, message_time, need_login, row_to_dict
 from database import connect_db
 
 
@@ -118,7 +118,7 @@ def conversation_to_dict(db, conversation, current_id):
         **person,
         "id": conversation["id"],
         "last": last_message["text"] if last_message else "Сообщений пока нет",
-        "time": last_message["sent_time"] if last_message else "",
+        "time": message_time(last_message["sent_time"]) if last_message else "",
         "unread": unread,
     }
 
@@ -227,7 +227,7 @@ def messages():
     if not text or len(text) > 4000:
         db.close()
         return jsonify({"error": "Сообщение должно быть от 1 до 4000 символов"}), 400
-    now = datetime.now().strftime("%H:%M")
+    now = datetime.now(timezone.utc).isoformat()
     row = db.execute(
         "INSERT INTO messages (dialog_id, sender, sender_id, text, sent_time, is_read) VALUES (?, 'me', ?, ?, ?, 0) RETURNING *",
         (dialog_id, g.user["id"], text, now),

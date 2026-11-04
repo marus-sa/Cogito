@@ -23,6 +23,12 @@ export const useHomeworkStore = defineStore('homework', {
       const index = this.homework.findIndex((item) => item.id === id)
       if (index !== -1) this.homework[index] = data.item
     },
+    async removeFile(homeworkId, fileId) {
+      const data = await api(`/homework/${homeworkId}/files/${fileId}`, { method: 'DELETE' })
+      const index = this.homework.findIndex((item) => item.id === homeworkId)
+      if (index !== -1) this.homework[index] = data.item
+      return data.item
+    },
     async toggleGoalTask(goalId, taskId) {
       const data = await api(`/goals/${goalId}/tasks/${taskId}`, { method: 'PATCH' })
       const index = this.goals.findIndex((item) => item.id === goalId)
