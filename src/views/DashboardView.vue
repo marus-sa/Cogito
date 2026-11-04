@@ -23,7 +23,7 @@ import { api } from '../api'
 import StatCard from '../components/StatCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import UserAvatar from '../components/UserAvatar.vue'
-import { formatHours, goalPercent, initialsFromName, notificationPath, sumReportMinutes, uniqueNames } from '../helpers'
+import { formatHours, initialsFromName, notificationPath, sumReportMinutes, uniqueNames } from '../helpers'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -31,11 +31,6 @@ const homeworkStore = useHomeworkStore()
 const lessonsStore = useLessonsStore()
 const messageStore = useMessagesStore()
 const role = computed(() => auth.roleKey)
-const goal = computed(
-  () =>
-    homeworkStore.goals[0] || { title: 'Добавьте первую цель', deadline: 'не указан', tasks: [] },
-)
-const goalProgress = computed(() => goalPercent(goal.value))
 const studentTask = computed(
   () =>
     homeworkStore.homework.find((item) => item.status !== 'Проверено') || {
@@ -53,7 +48,6 @@ const reviewedHomework = computed(() =>
 const latestReviewedHomework = computed(() => reviewedHomework.value[0] || null)
 const parentHasData = computed(
   () =>
-    homeworkStore.goals.length > 0 ||
     homeworkStore.homework.length > 0 ||
     lessonsStore.lessons.length > 0,
 )
@@ -112,7 +106,7 @@ const shortPeople = (items) => {
 const firstName = computed(() => auth.user?.name?.split(' ')[0] || 'друг')
 const roleCopy = computed(() => {
   const text = {
-    student: 'Сегодня отличный день, чтобы сделать небольшой шаг к своей цели.',
+    student: 'Сегодня отличный день, чтобы узнать что-то новое.',
     tutor: 'Здесь собраны ваши занятия, задания и сообщения учеников.',
     parent: 'Здесь появятся расписание, задания и прогресс ребёнка.',
     mentor: 'Здесь собраны занятия и отчёты вашей команды.',
@@ -135,7 +129,6 @@ const parentTask = computed(
     homeworkStore.homework[0] ||
     null,
 )
-const parentGoal = computed(() => homeworkStore.goals[0] || null)
 const adminStats = ref({
   students: 0,
   tutors: 0,
@@ -201,29 +194,6 @@ onMounted(async () => {
     <template v-if="role === 'student'">
       <div class="grid two-col main-grid">
         <section class="stack">
-          <article class="card panel goal-card">
-            <div class="section-title">
-              <div>
-                <span class="eyebrow">Моя цель</span>
-                <h2>{{ goal.title }}</h2>
-              </div>
-              <RouterLink to="/goals" class="link">
-                Все цели
-                <ArrowRight :size="14" />
-              </RouterLink>
-            </div>
-            <ProgressBar :value="goalProgress" />
-            <div class="goal-details">
-              <span>
-                Срок:
-                <b>{{ goal.deadline }}</b>
-              </span>
-              <span>
-                <b>{{ goal.tasks.filter((item) => item.done).length }}</b>
-                из {{ goal.tasks.length }} подзадач
-              </span>
-            </div>
-          </article>
           <article class="card panel next-lesson">
             <div class="section-title">
               <h2>Ближайшее занятие</h2>
@@ -419,7 +389,7 @@ onMounted(async () => {
               <b>{{ student.name }}</b>
               <small>{{ student.detail }}</small>
             </div>
-            <div class="student-goal">
+            <div class="student-homework-progress">
               <small>
                 {{
                   student.homeworkCount
@@ -452,12 +422,7 @@ onMounted(async () => {
             Написать репетитору
           </RouterLink>
         </div>
-        <div class="grid three-col">
-          <div>
-            <small>Текущая цель</small>
-            <b>{{ parentGoal?.title || 'Цель пока не добавлена' }}</b>
-            <ProgressBar :value="parentGoal ? goalProgress : 0" />
-          </div>
+        <div class="grid two-col">
           <div>
             <small>Ближайшее занятие</small>
             <b>{{ parentLesson?.date || 'Пока нет' }} · {{ parentLesson?.time || '—' }}</b>

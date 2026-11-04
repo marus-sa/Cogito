@@ -123,6 +123,7 @@ SQLITE_SCHEMA = [
         submission_link TEXT,
         review_comment TEXT
     )""",
+    # Старые записи сохраняем, хотя раздел целей больше не используется.
     """CREATE TABLE IF NOT EXISTS goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,

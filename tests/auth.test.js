@@ -30,6 +30,19 @@ test('Файл отправляется как FormData без подмены н
   await api('/homework/1/submit', { method: 'PATCH', body })
 })
 
+test('Загрузка домашних заданий не обращается к удалённым целям', async () => {
+  const requests = []
+  globalThis.fetch = async (url) => {
+    requests.push(url)
+    return response({ items: [{ id: 42, title: 'Задание' }] })
+  }
+  const homework = useHomeworkStore()
+  await homework.loadHomework()
+  assert.deepEqual(requests, ['/api/homework'])
+  assert.equal(homework.homework[0].id, 42)
+  assert.equal('goals' in homework.$state, false)
+})
+
 test('Вход использует роль сервера и обычный объект запроса', async () => {
   globalThis.fetch = async (url, request) => {
     assert.equal(url, '/api/auth/login')

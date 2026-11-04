@@ -68,12 +68,3 @@ export function safeLink(value) {
   return ''
 }
 
-export function goalPercent(goal) {
-  const tasks = Array.isArray(goal.tasks) ? goal.tasks : []
-  if (tasks.length === 0) return 0
-  let done = 0
-  for (const task of tasks) {
-    if (task.done) done += 1
-  }
-  return Math.round((done / tasks.length) * 100)
-}

@@ -1,6 +1,5 @@
-"""Занятия, домашние задания, цели и отчёты о часах."""
+"""Занятия, домашние задания и отчёты о часах."""
 
-import json
 import re
 import secrets
 from pathlib import Path
@@ -10,7 +9,6 @@ import database
 from common import (
     full_name,
     get_data,
-    goal_to_dict,
     http_link_from,
     mentor_can_manage_tutor,
     need_login,
@@ -389,61 +387,6 @@ def grade_homework(homework_id):
     item = homework_item(db, row)
     db.close()
     return jsonify({"item": item})
-
-
-@study.route("/api/goals", methods=["GET", "POST"])
-@need_login
-def goals():
-    if request.method == "POST":
-        error = role_error("student")
-        if error:
-            return error
-    db = connect_db()
-    if request.method == "GET":
-        rows = scoped_rows(db, "goals")
-        db.close()
-        return jsonify({"items": [goal_to_dict(row) for row in rows]})
-    data = get_data()
-    row = db.execute(
-        """INSERT INTO goals (title, subject, deadline, tutor, student_id, tutor_id, description, tasks)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?) RETURNING *""",
-        (
-            data.get("title", ""),
-            data.get("subject", ""),
-            data.get("deadline", ""),
-            "Не назначен",
-            g.user["id"],
-            data.get("description", ""),
-            json.dumps(data.get("tasks", []), ensure_ascii=False),
-        ),
-    ).fetchone()
-    db.commit()
-    db.close()
-    return jsonify({"item": goal_to_dict(row)}), 201
-
-
-@study.patch("/api/goals/<int:goal_id>/tasks/<int:task_id>")
-@need_login
-def toggle_goal_task(goal_id, task_id):
-    error = role_error("student", "tutor", "mentor", "admin")
-    if error:
-        return error
-    db = connect_db()
-    row = scoped_item(db, "goals", goal_id)
-    if not row:
-        db.close()
-        return jsonify({"error": "Цель не найдена"}), 404
-    tasks = json.loads(row["tasks"])
-    for task in tasks:
-        if task["id"] == task_id:
-            task["done"] = not task["done"]
-    db.execute(
-        "UPDATE goals SET tasks = ? WHERE id = ?", (json.dumps(tasks, ensure_ascii=False), goal_id)
-    )
-    db.commit()
-    updated = db.execute("SELECT * FROM goals WHERE id = ?", (goal_id,)).fetchone()
-    db.close()
-    return jsonify({"item": goal_to_dict(updated)})
 
 
 @study.route("/api/review-lessons", methods=["GET", "POST"])

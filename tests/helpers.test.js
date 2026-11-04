@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { durationInMinutes, formatHours, goalPercent, initialsFromName, safeLink, uniqueNames } from '../src/helpers.js'
+import { durationInMinutes, formatHours, initialsFromName, safeLink, uniqueNames } from '../src/helpers.js'
+import { navigation, roles } from '../src/config.js'
 
 test('Инициалы берутся из первых двух слов', () => {
   assert.equal(initialsFromName(' Мария Сагалаева '), 'МС')
@@ -29,9 +30,10 @@ test('Длительность и часы считаются в минутах'
   assert.equal(formatHours(105), '1 ч 45 мин')
 })
 
-test('Процент цели зависит от выполненных шагов', () => {
-  assert.equal(goalPercent({}), 0)
-  assert.equal(goalPercent({ tasks: [] }), 0)
-  assert.equal(goalPercent({ tasks: [{ done: true }, { done: false }, { done: false }] }), 33)
-  assert.equal(goalPercent({ tasks: [{ done: true }] }), 100)
+test('Удалённого раздела целей нет в меню и поиске ни одной роли', () => {
+  for (const role of Object.keys(roles)) {
+    const pages = navigation.filter((page) => page.roles.includes(role))
+    assert.equal(pages.some((page) => page.to === '/goals'), false)
+    assert.equal(pages.some((page) => page.label === 'Цели'), false)
+  }
 })

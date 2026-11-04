@@ -63,11 +63,6 @@
 .main-grid {
   align-items: stretch;
 }
-.goal-card .section-title h2 {
-  max-width: 430px;
-  margin-top: 6px;
-  font-size: 17px;
-}
 .eyebrow {
   display: inline-block;
   color: var(--primary-dark);
@@ -75,17 +70,6 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-.goal-details {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 13px;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-.goal-details b {
-  color: var(--text-main);
 }
 .section-title :deep(.link) {
   display: inline-flex;
@@ -356,11 +340,11 @@
   color: var(--text-secondary);
   font-size: 10px;
 }
-.student-goal {
+.student-homework-progress {
   width: min(230px, 25vw);
   margin-left: auto;
 }
-.student-goal small {
+.student-homework-progress small {
   display: block;
   margin-bottom: 5px;
   color: var(--text-secondary);
@@ -613,17 +597,13 @@ blockquote {
   .welcome-orbit {
     display: none;
   }
-  .goal-details {
-    display: block;
-    line-height: 1.9;
-  }
   .lesson-actions > * {
     flex: 1;
   }
   .student-list article {
     flex-wrap: wrap;
   }
-  .student-goal {
+  .student-homework-progress {
     order: 3;
     width: 100%;
     margin-left: 52px;
@@ -635,7 +615,7 @@ blockquote {
   .message-button {
     margin: 3px 0 0 66px;
   }
-  .child-summary .three-col {
+  .child-summary .two-col {
     gap: 18px;
   }
   .subjects > div {

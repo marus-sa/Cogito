@@ -68,12 +68,6 @@ def row_to_dict(row):
     return item
 
 
-def goal_to_dict(row):
-    item = dict(row)
-    item["tasks"] = json.loads(item["tasks"])
-    return item
-
-
 def get_data():
     data = request.get_json(silent=True)
     return data if isinstance(data, dict) else {}

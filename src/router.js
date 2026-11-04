@@ -8,7 +8,6 @@ import AdminResetView from './views/AdminResetView.vue'
 import DashboardView from './views/DashboardView.vue'
 import ScheduleView from './views/ScheduleView.vue'
 import HomeworkView from './views/HomeworkView.vue'
-import GoalsView from './views/GoalsView.vue'
 import ProgressView from './views/ProgressView.vue'
 import ChatsView from './views/ChatsView.vue'
 import HoursView from './views/HoursView.vue'
@@ -36,7 +35,7 @@ const routes = [
       { path: 'dashboard', component: DashboardView, meta: { title: 'Главная' } },
       { path: 'schedule', component: ScheduleView, meta: { title: 'Расписание' } },
       { path: 'homework', component: HomeworkView, meta: { title: 'Домашние задания' } },
-      { path: 'goals', component: GoalsView, meta: { title: 'Цели' } },
+      { path: 'goals', redirect: '/dashboard' },
       { path: 'progress', component: ProgressView, meta: { title: 'Прогресс' } },
       { path: 'chats', component: ChatsView, meta: { title: 'Чаты' } },
       {

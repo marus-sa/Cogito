@@ -1,7 +1,6 @@
 """Тестовые участники и занятия. Используются только при COGITO_DEMO_DATA=1."""
 
 
-import json
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
 
@@ -152,27 +151,6 @@ def seed_demo_data(db):
             ),
         ],
     )
-    tasks = [
-        {"id": 1, "label": "Повторить дроби", "done": True},
-        {"id": 2, "label": "Решить диагностическую работу", "done": True},
-        {"id": 3, "label": "Изучить линейные уравнения", "done": False},
-        {"id": 4, "label": "Выполнить итоговый тест", "done": False},
-    ]
-    db.execute(
-        """INSERT INTO goals (title, subject, deadline, tutor, student_id, tutor_id, description, tasks)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            "Повысить оценку по математике с 3 до 4",
-            "Математика",
-            "25 августа",
-            "Мария Иванова",
-            student_id,
-            tutor_id,
-            "Уверенно решать базовые задания и выйти на твёрдую четвёрку к концу четверти.",
-            json.dumps(tasks, ensure_ascii=False),
-        ),
-    )
-
     db.execute("INSERT INTO conversations (title) VALUES (?)", ("Тестовый ученик и Мария",))
     conversation = db.execute("SELECT id FROM conversations ORDER BY id DESC LIMIT 1").fetchone()
     dialog_id = conversation["id"]

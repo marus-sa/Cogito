@@ -5,7 +5,7 @@ export const roles = {
     name: 'Участник',
     initials: 'УЧ',
     color: '#b39ddb',
-    description: 'Учусь и двигаюсь к своей цели',
+    description: 'Учусь и выполняю задания',
   },
   tutor: {
     label: 'Репетитор',
@@ -19,7 +19,7 @@ export const roles = {
     name: 'Участник',
     initials: 'УЧ',
     color: '#e2b9c7',
-    description: 'Поддерживаю ребёнка на пути к цели',
+    description: 'Поддерживаю ребёнка в учёбе',
   },
   mentor: {
     label: 'Наставник',
@@ -68,14 +68,6 @@ export const navigation = [
     icon: 'BookOpenCheck',
     description: 'Задания и ответы',
     keywords: 'домашка работа',
-    roles: ['student', 'tutor', 'parent', 'mentor', 'admin'],
-  },
-  {
-    label: 'Цели',
-    to: '/goals',
-    icon: 'Target',
-    description: 'Учебные цели',
-    keywords: 'цель план',
     roles: ['student', 'tutor', 'parent', 'mentor', 'admin'],
   },
   {

@@ -1,21 +1,15 @@
 <script setup>
 import { computed } from 'vue'
-import { BookOpen, CalendarDays, CheckCircle2, Target, TrendingUp } from 'lucide-vue-next'
+import { BookOpen } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useHomeworkStore } from '../stores/homework'
 import { useLessonsStore } from '../stores/lessons'
 import EmptyState from '../components/EmptyState.vue'
-import ProgressBar from '../components/ProgressBar.vue'
 import StatCard from '../components/StatCard.vue'
-import { goalPercent as progress } from '../helpers'
 
 const auth = useAuthStore()
 const homework = useHomeworkStore()
 const lessons = useLessonsStore()
-
-function goalTasks(goal) {
-  return Array.isArray(goal.tasks) ? goal.tasks : []
-}
 
 function scorePercent(score) {
   const match = String(score || '').match(/^\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*$/)
@@ -30,11 +24,11 @@ function scorePercent(score) {
 
 const scopeText = computed(() => {
   const texts = {
-    student: 'Здесь собраны данные по вашим заданиям, занятиям и учебным целям.',
-    parent: 'Здесь собраны доступные данные по заданиям, занятиям и учебным целям ребёнка.',
-    tutor: 'Здесь собраны данные по доступным заданиям, занятиям и учебным целям учеников.',
-    mentor: 'Здесь собраны данные по доступным занятиям и учебным целям команды.',
-    admin: 'Здесь собраны данные по занятиям, заданиям и учебным целям проекта.',
+    student: 'Здесь собраны данные по вашим заданиям и занятиям.',
+    parent: 'Здесь собраны доступные данные по заданиям и занятиям ребёнка.',
+    tutor: 'Здесь собраны данные по доступным заданиям и занятиям учеников.',
+    mentor: 'Здесь собраны данные по доступным заданиям и занятиям команды.',
+    admin: 'Здесь собраны данные по занятиям и заданиям проекта.',
   }
   return texts[auth.roleKey] || 'Здесь собраны доступные данные об учебном прогрессе.'
 })
@@ -57,25 +51,8 @@ const completedHomework = computed(
 const heldLessons = computed(
   () => lessons.lessons.filter((item) => item.status === 'Проведено').length,
 )
-const totalGoalTasks = computed(() => {
-  let total = 0
-  for (const goal of homework.goals) total += goalTasks(goal).length
-  return total
-})
-const completedGoalTasks = computed(() => {
-  let done = 0
-  for (const goal of homework.goals) {
-    for (const task of goalTasks(goal)) {
-      if (task.done) done += 1
-    }
-  }
-  return done
-})
-const goalProgress = computed(() =>
-  totalGoalTasks.value ? Math.round((completedGoalTasks.value / totalGoalTasks.value) * 100) : 0,
-)
 const hasData = computed(
-  () => homework.homework.length || lessons.lessons.length || homework.goals.length,
+  () => homework.homework.length || lessons.lessons.length,
 )
 
 const subjects = computed(() => {
@@ -85,7 +62,7 @@ const subjects = computed(() => {
     if (!name) return
     let item = result.find((item) => item.name === name)
     if (!item) {
-      item = { name, homework: 0, lessons: 0, goals: 0 }
+      item = { name, homework: 0, lessons: 0 }
       result.push(item)
     }
     item[type] += 1
@@ -93,11 +70,10 @@ const subjects = computed(() => {
 
   for (const item of homework.homework) add(item.subject, 'homework')
   for (const item of lessons.lessons) add(item.subject, 'lessons')
-  for (const item of homework.goals) add(item.subject, 'goals')
 
   return result.sort((first, second) => {
-    const firstCount = first.homework + first.lessons + first.goals
-    const secondCount = second.homework + second.lessons + second.goals
+    const firstCount = first.homework + first.lessons
+    const secondCount = second.homework + second.lessons
     return secondCount - firstCount || first.name.localeCompare(second.name, 'ru')
   })
 })
@@ -112,7 +88,7 @@ const subjects = computed(() => {
       </div>
     </div>
 
-    <section class="grid four-col">
+    <section class="grid three-col">
       <StatCard
         label="Средний результат"
         :value="averageScore === null ? '—' : `${averageScore}%`"
@@ -121,10 +97,9 @@ const subjects = computed(() => {
       />
       <StatCard label="Сдано или проверено" :value="completedHomework" icon="CheckCircle2" />
       <StatCard label="Проведено занятий" :value="heldLessons" icon="CalendarDays" tone="orange" />
-      <StatCard label="Прогресс по целям" :value="`${goalProgress}%`" icon="Target" tone="rose" />
     </section>
 
-    <section v-if="hasData" class="grid two-col below">
+    <section v-if="hasData" class="below">
       <section class="card panel">
         <div class="section-title">
           <div>
@@ -161,30 +136,6 @@ const subjects = computed(() => {
         <div v-else class="empty-compact">Проверенных заданий с оценкой пока нет.</div>
       </section>
 
-      <section class="card panel">
-        <div class="section-title">
-          <h2>Учебные цели</h2>
-          <span class="tag">{{ homework.goals.length }}</span>
-        </div>
-
-        <div v-if="homework.goals.length" class="goal-list">
-          <article v-for="goal in homework.goals" :key="goal.id" class="goal-item">
-            <div class="goal-head">
-              <div>
-                <b>{{ goal.title }}</b>
-                <span>
-                  {{ goal.subject || 'Предмет не указан' }} ·
-                  {{ goalTasks(goal).filter((task) => task.done).length }} из
-                  {{ goalTasks(goal).length }} шагов
-                </span>
-              </div>
-              <strong>{{ progress(goal) }}%</strong>
-            </div>
-            <ProgressBar :value="progress(goal)" :show-label="false" />
-          </article>
-        </div>
-        <div v-else class="empty-compact">Учебные цели пока не добавлены.</div>
-      </section>
     </section>
 
     <section v-if="hasData" class="card panel below">
@@ -197,17 +148,17 @@ const subjects = computed(() => {
         <article v-for="item in subjects" :key="item.name" class="subject-item">
           <b>{{ item.name }}</b>
           <span>
-            Занятий: {{ item.lessons }} · заданий: {{ item.homework }} · целей: {{ item.goals }}
+            Занятий: {{ item.lessons }} · заданий: {{ item.homework }}
           </span>
         </article>
       </div>
-      <div v-else class="empty-compact">В занятиях, заданиях и целях пока не указан предмет.</div>
+      <div v-else class="empty-compact">В занятиях и заданиях пока не указан предмет.</div>
     </section>
 
     <section v-else class="card">
       <EmptyState
         title="Данных о прогрессе пока нет"
-        text="Они появятся после создания занятий, заданий или учебных целей."
+        text="Они появятся после создания занятий или заданий."
       />
     </section>
   </div>
@@ -219,38 +170,6 @@ const subjects = computed(() => {
 }
 .section-title p {
   margin: 3px 0 0;
-}
-.goal-list {
-  display: grid;
-  gap: 14px;
-}
-.goal-item {
-  padding: 13px;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  background: #fcfbfe;
-}
-.goal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.goal-head b,
-.goal-head span {
-  display: block;
-}
-.goal-head b {
-  font-size: 12px;
-}
-.goal-head span {
-  margin-top: 4px;
-  color: var(--text-secondary);
-  font-size: 10px;
-}
-.goal-head strong {
-  font-size: 13px;
 }
 .subjects {
   display: grid;
