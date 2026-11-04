@@ -15,6 +15,7 @@ from common import (
     scoped_item,
     scoped_rows,
     student_by_name,
+    tutor_has_student,
     user_by_name,
     video_link_from,
 )
@@ -47,6 +48,11 @@ def lesson_list():
     if not mentor_can_manage_tutor(db, tutor["id"]):
         db.close()
         return jsonify({"error": "Этот репетитор не закреплён за вами"}), 403
+    if not tutor_has_student(db, tutor["id"], student["id"]):
+        db.close()
+        return jsonify({
+            "error": "Сначала администратор должен связать ученика с репетитором в разделе «Участники»"
+        }), 403
     lesson_link, link_error = http_link_from(data.get("link"), "ссылку на занятие")
     if link_error:
         db.close()
@@ -133,6 +139,11 @@ def homework_list():
     if not mentor_can_manage_tutor(db, tutor["id"]):
         db.close()
         return jsonify({"error": "Этот репетитор не закреплён за вами"}), 403
+    if not tutor_has_student(db, tutor["id"], student["id"]):
+        db.close()
+        return jsonify({
+            "error": "Сначала администратор должен связать ученика с репетитором в разделе «Участники»"
+        }), 403
     attachment, link_error = http_link_from(data.get("attachment"), "ссылку на материалы")
     if link_error:
         db.close()

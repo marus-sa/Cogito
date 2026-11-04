@@ -163,7 +163,10 @@ def student_scope():
             user_id,
         )
     if role == "tutor":
-        return "tutor_id = ?", (user_id,)
+        return (
+            "tutor_id = ? AND student_id IN (SELECT student_id FROM student_tutors WHERE tutor_id = ?)",
+            (user_id, user_id),
+        )
     if role == "mentor":
         return "tutor_id IN (SELECT tutor_id FROM tutor_mentors WHERE mentor_id = ?)", (user_id,)
     return "1 = 0", ()
@@ -185,6 +188,15 @@ def student_by_name(db, name):
     return user_by_name(db, name, "student")
 
 
+def tutor_has_student(db, tutor_id, student_id):
+    return bool(
+        db.execute(
+            "SELECT 1 FROM student_tutors WHERE tutor_id = ? AND student_id = ?",
+            (tutor_id, student_id),
+        ).fetchone()
+    )
+
+
 def mentor_can_manage_tutor(db, tutor_id):
     if g.user["role"] != "mentor":
         return True
@@ -198,7 +210,8 @@ def mentor_can_manage_tutor(db, tutor_id):
 
 def user_by_name(db, name, role):
     return db.execute(
-        "SELECT * FROM users WHERE first_name || ' ' || last_name = ? AND role = ? AND account_status = 'active'",
+        """SELECT * FROM users WHERE first_name || ' ' || last_name = ? AND role = ?
+        AND account_status = 'active' AND email_verified_at IS NOT NULL""",
         (name.strip(), role),
     ).fetchone()
 

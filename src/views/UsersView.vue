@@ -9,16 +9,18 @@ import BaseButton from '../components/BaseButton.vue'
 const auth = useAuthStore()
 const messages = useMessagesStore()
 const users = ref([])
-const relationships = ref({ parents: [], mentors: [] })
+const relationships = ref({ parents: [], mentors: [], students: [] })
 const selectedId = ref('')
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const form = reactive({ role: 'student', accountStatus: 'active' })
-const link = reactive({ kind: 'parent_student', firstId: '', secondId: '' })
+const link = reactive({ kind: 'student_tutor', firstId: '', secondId: '' })
 const statuses = { active: 'Активен', pending: 'Ожидает проверки', blocked: 'Заблокирован' }
 const selected = computed(() => users.value.find((user) => user.id === Number(selectedId.value)))
-const firstRole = computed(() => (link.kind === 'parent_student' ? 'parent' : 'mentor'))
+const firstRole = computed(() =>
+  ({ parent_student: 'parent', mentor_tutor: 'mentor', student_tutor: 'student' })[link.kind],
+)
 const secondRole = computed(() => (link.kind === 'parent_student' ? 'student' : 'tutor'))
 const activeUsers = (role) =>
   users.value.filter(
@@ -148,6 +150,10 @@ onMounted(load)
       <section class="card panel">
         <h2>Связи участников</h2>
         <p>
+          Свяжите ученика с репетитором, чтобы они могли начать чат, назначать занятия и задания.
+          Репетитор работает только с закреплёнными за ним учениками.
+        </p>
+        <p>
           Связывайте родителя с ребёнком только после проверки их отношений. Имя ребёнка в профиле
           само по себе не даёт доступа к его данным.
         </p>
@@ -158,30 +164,58 @@ onMounted(load)
           <label>
             Тип связи
             <select v-model="link.kind" @change="resetLink">
+              <option value="student_tutor">Ученик — репетитор</option>
               <option value="parent_student">Родитель — ученик</option>
               <option value="mentor_tutor">Наставник — репетитор</option>
             </select>
           </label>
           <label>
             {{ roles[firstRole].label }}
-            <select v-model="link.firstId" required>
+            <select v-model="link.firstId" :disabled="!activeUsers(firstRole).length" required>
               <option value="" disabled>Выберите участника</option>
               <option v-for="user in activeUsers(firstRole)" :key="user.id" :value="user.id">
                 {{ user.name }} · {{ user.email }}
               </option>
             </select>
           </label>
+          <p v-if="!activeUsers(firstRole).length">
+            Нет доступных участников с ролью «{{ roles[firstRole].label }}».
+            Проверьте роль, статус «Активен» и подтверждение почты в разделе «Доступ к аккаунту» выше.
+          </p>
           <label>
             {{ roles[secondRole].label }}
-            <select v-model="link.secondId" required>
+            <select v-model="link.secondId" :disabled="!activeUsers(secondRole).length" required>
               <option value="" disabled>Выберите участника</option>
               <option v-for="user in activeUsers(secondRole)" :key="user.id" :value="user.id">
                 {{ user.name }} · {{ user.email }}
               </option>
             </select>
           </label>
-          <BaseButton type="submit" :loading="saving">Добавить связь</BaseButton>
+          <p v-if="!activeUsers(secondRole).length">
+            Нет доступных участников с ролью «{{ roles[secondRole].label }}».
+            Проверьте роль, статус «Активен» и подтверждение почты в разделе «Доступ к аккаунту» выше.
+          </p>
+          <BaseButton type="submit" :loading="saving" :disabled="!link.firstId || !link.secondId">
+            Добавить связь
+          </BaseButton>
         </form>
+        <h3>Ученики и репетиторы</h3>
+        <p v-if="!relationships.students.length">Связей пока нет.</p>
+        <div
+          v-for="item in relationships.students"
+          :key="`${item.student_id}-${item.tutor_id}`"
+          class="link-row"
+        >
+          <span>{{ nameOf(item.student_id) }} → {{ nameOf(item.tutor_id) }}</span>
+          <BaseButton
+            size="sm"
+            variant="outline"
+            :disabled="saving"
+            @click="saveLink('student_tutor', item.student_id, item.tutor_id, 'DELETE')"
+          >
+            Снять связь
+          </BaseButton>
+        </div>
         <h3>Родители и ученики</h3>
         <p v-if="!relationships.parents.length">Связей пока нет.</p>
         <div

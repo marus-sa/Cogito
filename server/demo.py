@@ -78,6 +78,10 @@ def seed_demo_data(db):
     parent_id = get_user_id(db, "elena@cogito.ru")
     mentor_id = get_user_id(db, "alexey@cogito.ru")
 
+    db.execute(
+        "INSERT INTO student_tutors (student_id, tutor_id) VALUES (?, ?)", (student_id, tutor_id)
+    )
+
     db.executemany(
         """INSERT INTO lessons
         (student, tutor, student_id, tutor_id, subject, lesson_date, lesson_time, duration, status, link, topic, materials)

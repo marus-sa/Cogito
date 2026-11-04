@@ -459,6 +459,9 @@ def update_admin_user(user_id):
         db.execute(
             "DELETE FROM tutor_mentors WHERE tutor_id = ? OR mentor_id = ?", (user_id, user_id)
         )
+        db.execute(
+            "DELETE FROM student_tutors WHERE student_id = ? OR tutor_id = ?", (user_id, user_id)
+        )
     if new_status != "active" or role_changed:
         db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     db.commit()
@@ -478,10 +481,12 @@ def admin_relationships():
         if request.method == "GET":
             parents = db.execute("SELECT parent_id, student_id FROM parent_students").fetchall()
             mentors = db.execute("SELECT mentor_id, tutor_id FROM tutor_mentors").fetchall()
+            students = db.execute("SELECT student_id, tutor_id FROM student_tutors").fetchall()
             return jsonify(
                 {
                     "parents": [dict(row) for row in parents],
                     "mentors": [dict(row) for row in mentors],
+                    "students": [dict(row) for row in students],
                 }
             )
 
@@ -490,6 +495,7 @@ def admin_relationships():
         kinds = {
             "parent_student": ("parent_students", "parent_id", "student_id", "parent", "student"),
             "mentor_tutor": ("tutor_mentors", "mentor_id", "tutor_id", "mentor", "tutor"),
+            "student_tutor": ("student_tutors", "student_id", "tutor_id", "student", "tutor"),
         }
         kind = data.get("kind")
         if not isinstance(kind, str) or kind not in kinds:

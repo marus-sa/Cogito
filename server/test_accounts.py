@@ -54,6 +54,27 @@ def sign_in(role, remember=True):
     return client, answer
 
 
+def new_student():
+    client = app.test_client()
+    with patch.object(accounts, "send_verification_email", return_value="sent") as send:
+        registered = client.post(
+            "/api/auth/register",
+            json={
+                "firstName": "Новый",
+                "lastName": "Ученик",
+                "email": "new.student@example.test",
+                "password": "safe-test-password",
+                "role": "student",
+                "consent": True,
+            },
+        )
+        assert registered.status_code == 201, registered.json
+        token = send.call_args.args[1]
+    confirmed = client.post("/api/auth/verify-email", json={"token": token})
+    assert confirmed.status_code == 200, confirmed.json
+    return client, confirmed.json["user"]
+
+
 class AccountTests(unittest.TestCase):
     def setUp(self):
         database.DATABASE_FILE = database.DATA_FOLDER / f"{self._testMethodName}.db"
@@ -248,6 +269,128 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(
             first.post("/api/auth/verify-email", json={"token": token}).status_code, 400
         )
+
+    def test_student_tutor_link_before_first_lesson(self):
+        admin, _ = sign_in("admin")
+        tutor, tutor_answer = sign_in("tutor")
+        student, person = new_student()
+        tutor_id = tutor_answer.json["user"]["id"]
+        payload = {"kind": "student_tutor", "firstId": person["id"], "secondId": tutor_id}
+        lesson = {
+            "student": person["name"], "subject": "Математика",
+            "date": "2026-11-04", "time": "16:00",
+        }
+
+        def contacts(client):
+            return {item["id"] for item in client.get("/api/chat/contacts").json["items"]}
+
+        self.assertNotIn(tutor_id, contacts(student))
+        self.assertNotIn(person["id"], contacts(tutor))
+        self.assertEqual(
+            student.post("/api/conversations", json={"recipientId": tutor_id}).status_code, 403
+        )
+        for endpoint in ["/api/lessons", "/api/homework"]:
+            self.assertEqual(tutor.post(endpoint, json=lesson).status_code, 403)
+        for role in ["student", "tutor", "parent", "mentor"]:
+            other, _ = sign_in(role)
+            self.assertEqual(
+                other.post("/api/admin/relationships", json=payload).status_code, 403
+            )
+            self.assertEqual(
+                other.delete("/api/admin/relationships", json=payload).status_code, 403
+            )
+
+        self.assertEqual(admin.post("/api/admin/relationships", json=payload).status_code, 201)
+        self.assertEqual(admin.post("/api/admin/relationships", json=payload).status_code, 201)
+        links = admin.get("/api/admin/relationships").json["students"]
+        self.assertEqual(sum(link["student_id"] == person["id"] for link in links), 1)
+        database.start_database()
+        self.assertIn(tutor_id, contacts(student))
+        self.assertIn(person["id"], contacts(tutor))
+        dialog = student.post("/api/conversations", json={"recipientId": tutor_id})
+        self.assertEqual(dialog.status_code, 201)
+        dialog_id = dialog.json["item"]["id"]
+        sent = student.post(
+            "/api/messages", json={"dialogId": dialog_id, "text": "Здравствуйте!"}
+        )
+        self.assertEqual(sent.status_code, 201)
+        received = tutor.get(f"/api/messages?dialog_id={dialog_id}").json["items"]
+        self.assertEqual(received[0]["text"], "Здравствуйте!")
+        for endpoint in ["/api/lessons", "/api/homework"]:
+            self.assertEqual(tutor.post(endpoint, json=lesson).status_code, 201)
+            self.assertEqual(len(student.get(endpoint).json["items"]), 1)
+        unrelated, _ = sign_in("student")
+        unrelated_lessons = unrelated.get("/api/lessons").json["items"]
+        self.assertNotIn(person["id"], {row["student_id"] for row in unrelated_lessons})
+
+        self.assertEqual(admin.delete("/api/admin/relationships", json=payload).status_code, 200)
+        database.start_database()
+        self.assertNotIn(tutor_id, contacts(student))
+        self.assertNotIn(person["id"], contacts(tutor))
+        self.assertEqual(
+            student.post("/api/conversations", json={"recipientId": tutor_id}).status_code, 403
+        )
+        for endpoint in ["/api/lessons", "/api/homework"]:
+            self.assertEqual(tutor.post(endpoint, json=lesson).status_code, 403)
+            rows = tutor.get(endpoint).json["items"]
+            self.assertNotIn(person["id"], {row["student_id"] for row in rows})
+            self.assertEqual(len(student.get(endpoint).json["items"]), 1)
+
+    def test_student_tutor_link_requires_verified_active_roles(self):
+        admin, _ = sign_in("admin")
+        tutor, tutor_answer = sign_in("tutor")
+        _, person = new_student()
+        tutor_id = tutor_answer.json["user"]["id"]
+        payload = {"kind": "student_tutor", "firstId": person["id"], "secondId": tutor_id}
+        wrong = {**payload, "firstId": tutor_id, "secondId": person["id"]}
+        self.assertEqual(admin.post("/api/admin/relationships", json=wrong).status_code, 400)
+        self.assertEqual(
+            admin.post("/api/admin/relationships", json={**payload, "secondId": 9999}).status_code,
+            400,
+        )
+        for status in ["pending", "blocked"]:
+            admin.patch(f'/api/admin/users/{person["id"]}', json={"accountStatus": status})
+            self.assertEqual(
+                admin.post("/api/admin/relationships", json=payload).status_code, 400
+            )
+        admin.patch(f'/api/admin/users/{person["id"]}', json={"accountStatus": "active"})
+        db = database.connect_db()
+        db.execute("UPDATE users SET email_verified_at = NULL WHERE id = ?", (person["id"],))
+        db.commit()
+        self.assertEqual(admin.post("/api/admin/relationships", json=payload).status_code, 400)
+        db.execute(
+            "UPDATE users SET email_verified_at = ? WHERE id = ?",
+            ("2026-11-04T00:00:00+00:00", person["id"]),
+        )
+        db.commit()
+        db.close()
+        self.assertEqual(admin.post("/api/admin/relationships", json=payload).status_code, 201)
+        changed = admin.patch(f'/api/admin/users/{person["id"]}', json={"role": "parent"})
+        self.assertEqual(changed.status_code, 200)
+        contacts = tutor.get("/api/chat/contacts").json["items"]
+        self.assertNotIn(person["id"], {item["id"] for item in contacts})
+        links = admin.get("/api/admin/relationships").json["students"]
+        self.assertFalse(any(link["student_id"] == person["id"] for link in links))
+
+    def test_existing_student_tutor_links_migrate_only_once(self):
+        db = database.connect_db()
+        expected = [dict(row) for row in db.execute("SELECT * FROM student_tutors").fetchall()]
+        db.execute("DELETE FROM student_tutors")
+        db.execute("DELETE FROM app_migrations WHERE migration_key = 'student-tutors-v1'")
+        db.commit()
+        db.close()
+        database.start_database()
+        db = database.connect_db()
+        actual = [dict(row) for row in db.execute("SELECT * FROM student_tutors").fetchall()]
+        self.assertEqual(actual, expected)
+        db.execute("DELETE FROM student_tutors")
+        db.commit()
+        db.close()
+        database.start_database()
+        db = database.connect_db()
+        count = db.execute("SELECT COUNT(*) AS count FROM student_tutors").fetchone()["count"]
+        self.assertEqual(count, 0)
+        db.close()
 
     def test_invalid_input_is_not_a_server_error(self):
         guest = app.test_client()

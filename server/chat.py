@@ -42,13 +42,13 @@ def chat_contact_rows(db):
 
     if role == "student":
         rows = db.execute(
-            "SELECT DISTINCT tutor_id AS id FROM lessons WHERE student_id = ? AND tutor_id IS NOT NULL",
+            "SELECT tutor_id AS id FROM student_tutors WHERE student_id = ?",
             (current_id,),
         ).fetchall()
         contact_ids.update(row["id"] for row in rows)
     elif role == "tutor":
         student_rows = db.execute(
-            "SELECT DISTINCT student_id AS id FROM lessons WHERE tutor_id = ? AND student_id IS NOT NULL",
+            "SELECT student_id AS id FROM student_tutors WHERE tutor_id = ?",
             (current_id,),
         ).fetchall()
         mentor_rows = db.execute(
@@ -62,9 +62,9 @@ def chat_contact_rows(db):
             (current_id,),
         ).fetchall()
         tutor_rows = db.execute(
-            """SELECT DISTINCT lessons.tutor_id AS id FROM lessons
-            JOIN parent_students ON parent_students.student_id = lessons.student_id
-            WHERE parent_students.parent_id = ? AND lessons.tutor_id IS NOT NULL""",
+            """SELECT DISTINCT student_tutors.tutor_id AS id FROM student_tutors
+            JOIN parent_students ON parent_students.student_id = student_tutors.student_id
+            WHERE parent_students.parent_id = ?""",
             (current_id,),
         ).fetchall()
         contact_ids.update(row["id"] for row in [*child_rows, *tutor_rows])
@@ -80,7 +80,8 @@ def chat_contact_rows(db):
         return []
     placeholders = ", ".join("?" for _ in contact_ids)
     return db.execute(
-        f"SELECT * FROM users WHERE id IN ({placeholders}) AND account_status = 'active' ORDER BY first_name, last_name",
+        f"""SELECT * FROM users WHERE id IN ({placeholders}) AND account_status = 'active'
+        AND email_verified_at IS NOT NULL ORDER BY first_name, last_name""",
         tuple(contact_ids),
     ).fetchall()
 

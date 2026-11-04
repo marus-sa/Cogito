@@ -186,6 +186,11 @@ SQLITE_SCHEMA = [
         student_id INTEGER NOT NULL,
         PRIMARY KEY (parent_id, student_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS student_tutors (
+        student_id INTEGER NOT NULL,
+        tutor_id INTEGER NOT NULL,
+        PRIMARY KEY (student_id, tutor_id)
+    )""",
     """CREATE TABLE IF NOT EXISTS admin_password_reset_tokens (
         token_fingerprint TEXT PRIMARY KEY,
         admin_user_id INTEGER NOT NULL,
@@ -234,6 +239,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_lessons_tutor_id ON lessons(tutor_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_dialog_id ON messages(dialog_id)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_student_tutors_tutor_id ON student_tutors(tutor_id)",
     "CREATE INDEX IF NOT EXISTS idx_admin_reset_authorizations_expires_at ON admin_password_reset_authorizations(expires_at)",
     "CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_expires_at ON email_verification_tokens(expires_at)",
 ]
@@ -297,6 +303,30 @@ def mark_existing_users_as_verified(db):
     )
 
 
+def add_existing_student_tutor_links(db):
+    """Один раз сохраняет прежние назначения из занятий и заданий."""
+    migration_key = "student-tutors-v1"
+    if db.execute(
+        "SELECT 1 FROM app_migrations WHERE migration_key = ?", (migration_key,)
+    ).fetchone():
+        return
+    db.execute(
+        """INSERT INTO student_tutors (student_id, tutor_id)
+        SELECT records.student_id, records.tutor_id FROM (
+            SELECT student_id, tutor_id FROM lessons
+            UNION SELECT student_id, tutor_id FROM homework
+        ) AS records
+        JOIN users AS student ON student.id = records.student_id
+        JOIN users AS tutor ON tutor.id = records.tutor_id
+        WHERE student.role = 'student' AND tutor.role = 'tutor'
+        ON CONFLICT DO NOTHING"""
+    )
+    db.execute(
+        "INSERT INTO app_migrations (migration_key, applied_at) VALUES (?, ?)",
+        (migration_key, datetime.now(timezone.utc).isoformat()),
+    )
+
+
 def start_database():
     db = connect_db()
     schema = POSTGRES_SCHEMA if is_postgres() else SQLITE_SCHEMA
@@ -304,6 +334,7 @@ def start_database():
         db.execute(statement)
     upgrade_old_database(db)
     mark_existing_users_as_verified(db)
+    add_existing_student_tutor_links(db)
     for statement in INDEXES:
         db.execute(statement)
     has_bootstrap_admin = bool(
