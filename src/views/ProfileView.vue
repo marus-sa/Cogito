@@ -33,25 +33,21 @@ const notices = reactive(
   defaultNotices.map(([key, label]) => ({
     key,
     label,
-    on: savedPreferences[key] ?? key !== 'email',
+    on: savedPreferences[key] ?? (key !== 'email'),
   })),
 )
-const details = computed(() =>
-  auth.roleKey === 'parent'
-    ? [
-        { label: 'Ребёнок', value: auth.user.childName || 'Не указан' },
-        { label: 'Предмет', value: form.subjects || 'Не указан' },
-        { label: 'Удобное время', value: form.time || 'Не указано' },
-      ]
-    : [
-        { label: 'Класс', value: form.grade || 'Не указан' },
-        {
-          label: auth.roleKey === 'tutor' ? 'Предметы' : 'Предмет',
-          value: form.subjects || 'Не указан',
-        },
-        { label: 'Удобное время', value: form.time || 'Не указано' },
-      ],
-)
+const details = computed(() => {
+  let firstField = { label: 'Класс', value: form.grade || 'Не указан' }
+  if (auth.roleKey === 'parent') {
+    firstField = { label: 'Ребёнок', value: auth.user.childName || 'Не указан' }
+  }
+  const subjectLabel = auth.roleKey === 'tutor' ? 'Предметы' : 'Предмет'
+  return [
+    firstField,
+    { label: subjectLabel, value: form.subjects || 'Не указан' },
+    { label: 'Удобное время', value: form.time || 'Не указано' },
+  ]
+})
 const avatarColor = computed(() => auth.user.avatarColor || auth.user.color)
 
 async function save() {
@@ -85,7 +81,7 @@ async function saveNotificationPreferences() {
   } catch (error) {
     const saved = auth.user.notificationPreferences || {}
     notices.forEach((notice) => {
-      notice.on = saved[notice.key] ?? notice.key !== 'email'
+      notice.on = saved[notice.key] ?? (notice.key !== 'email')
     })
     messages.showToast(error.message, 'error')
   }
