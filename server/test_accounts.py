@@ -83,26 +83,16 @@ class AccountTests(unittest.TestCase):
         database.DATABASE_FILE = database.DATA_FOLDER / "cogito.db"
         database.start_database()
 
-    def test_removed_goals_keep_saved_data(self):
+    def test_database_restart_keeps_unmanaged_records(self):
         db = database.connect_db()
-        row = db.execute(
-            """INSERT INTO goals (title, subject, deadline, tutor, tasks)
-            VALUES (?, ?, ?, ?, ?) RETURNING id""",
-            ("Сохранённая старая цель", "Математика", "2026-11-04", "Репетитор", "[]"),
-        ).fetchone()
-        goal_id = row["id"]
+        db.execute("CREATE TABLE legacy_records (id INTEGER PRIMARY KEY, text TEXT NOT NULL)")
+        db.execute("INSERT INTO legacy_records (id, text) VALUES (1, ?)", ("Сохранённая запись",))
         db.commit()
         db.close()
-        for role in ACCOUNTS:
-            client, _ = sign_in(role)
-            self.assertEqual(client.get("/api/goals").status_code, 404)
-            self.assertIn(client.post("/api/goals", json={"title": "Новая цель"}).status_code, [404, 405])
-            self.assertIn(client.patch(f"/api/goals/{goal_id}/tasks/1").status_code, [404, 405])
         database.start_database()
         db = database.connect_db()
-        saved = db.execute("SELECT title, tasks FROM goals WHERE id = ?", (goal_id,)).fetchone()
-        self.assertEqual(saved["title"], "Сохранённая старая цель")
-        self.assertEqual(saved["tasks"], "[]")
+        saved = db.execute("SELECT text FROM legacy_records WHERE id = 1").fetchone()
+        self.assertEqual(saved["text"], "Сохранённая запись")
         db.close()
 
     def new_homework(self):

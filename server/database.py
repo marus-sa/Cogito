@@ -123,18 +123,6 @@ SQLITE_SCHEMA = [
         submission_link TEXT,
         review_comment TEXT
     )""",
-    # Старые записи сохраняем, хотя раздел целей больше не используется.
-    """CREATE TABLE IF NOT EXISTS goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        subject TEXT NOT NULL,
-        deadline TEXT NOT NULL,
-        tutor TEXT NOT NULL,
-        student_id INTEGER,
-        tutor_id INTEGER,
-        description TEXT,
-        tasks TEXT NOT NULL
-    )""",
     """CREATE TABLE IF NOT EXISTS conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL DEFAULT ''
@@ -270,7 +258,6 @@ UPGRADE_COLUMNS = {
         "submission_link": "TEXT",
         "review_comment": "TEXT",
     },
-    "goals": {"student_id": "INTEGER", "tutor_id": "INTEGER"},
     "messages": {"sender_id": "INTEGER"},
     "notifications": {"user_id": "INTEGER"},
     "review_lessons": {"tutor_id": "INTEGER", "video_link": "TEXT"},

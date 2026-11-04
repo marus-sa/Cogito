@@ -30,10 +30,14 @@ test('Длительность и часы считаются в минутах'
   assert.equal(formatHours(105), '1 ч 45 мин')
 })
 
-test('Удалённого раздела целей нет в меню и поиске ни одной роли', () => {
+test('Меню и поиск содержат только доступные разделы', () => {
+  const routes = new Set([
+    '/dashboard', '/users', '/schedule', '/homework', '/progress', '/chats',
+    '/hours', '/lessons-control', '/reports', '/profile', '/notifications', '/help',
+  ])
   for (const role of Object.keys(roles)) {
     const pages = navigation.filter((page) => page.roles.includes(role))
-    assert.equal(pages.some((page) => page.to === '/goals'), false)
-    assert.equal(pages.some((page) => page.label === 'Цели'), false)
+    assert.equal(pages.every((page) => routes.has(page.to)), true)
+    assert.equal(new Set(pages.map((page) => page.to)).size, pages.length)
   }
 })

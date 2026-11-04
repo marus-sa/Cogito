@@ -347,7 +347,7 @@ try:
         assert invalid_email.status_code == 400
         assert reset.get("/api/auth/admin-password-reset").json == {"available": True}
 
-        # Когда администраторов больше одного, сервер не выбирает цель
+        # Когда администраторов больше одного, сервер не выбирает аккаунт
         # произвольно и вообще не показывает аварийную форму.
         db = database.connect_db()
         db.execute(

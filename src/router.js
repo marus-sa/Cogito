@@ -35,7 +35,6 @@ const routes = [
       { path: 'dashboard', component: DashboardView, meta: { title: 'Главная' } },
       { path: 'schedule', component: ScheduleView, meta: { title: 'Расписание' } },
       { path: 'homework', component: HomeworkView, meta: { title: 'Домашние задания' } },
-      { path: 'goals', redirect: '/dashboard' },
       { path: 'progress', component: ProgressView, meta: { title: 'Прогресс' } },
       { path: 'chats', component: ChatsView, meta: { title: 'Чаты' } },
       {
