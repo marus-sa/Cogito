@@ -1,7 +1,7 @@
 # Финальная заявка: Cogito
 
 Автор: Мария Сагалаева. Обновлено: 5 ноября 2026 года.  
-[Сайт](https://cogito-light-hearts-marussa.msk1.amvera.tech/) · [Код](https://github.com/marus-sa/Cogito) · [Сценарии](final_msagalaeva_userscripts.md) · [Старая заявка](OLD/msagalaeva_application.md)
+[Сайт](https://cogito-light-hearts-marussa.msk1.amvera.tech/) · [Код](https://github.com/marus-sa/Cogito) · [Сценарии](final_scripts.md) · [Первоначальная заявка](OLD/msagalaeva_application.md) · [Изменения](changes.md)
 
 ## Продукт и проблема
 
@@ -59,7 +59,7 @@ SQLite выбрана для небольшого проекта с одним �
 - `package.json`, `package-lock.json`, `server/requirements.txt` — зависимости; `.env.example` — образец настроек.
 - `tests/`, `server/test_*.py`, `.github/workflows/check.yml` — проверки.
 - `Dockerfile`, `docker-compose.yml`, `amvera.yaml` — запуск и рабочий хостинг.
-- `README.md` — запуск; `final_msagalaeva_userscripts.md` — сценарии; `OLD/` — предыдущие документы.
+- `README.md` — запуск; `final_scripts.md` — сценарии; `changes.md` — изменения; `OLD/` — первоначальные документы.
 
 ## Аналоги
 
