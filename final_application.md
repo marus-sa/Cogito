@@ -10,6 +10,7 @@
 "Cogito"
 
 [Рабочий сайт](https://cogito-light-hearts-marussa.msk1.amvera.tech/)
+
 [Финальный показ кода](https://vkvideo.ru/video786416906_456239077?list=ln-M1kzGswadwIPWJRhzW)
 
 ## [ ЗАКАЗЧИК / ПОТЕНЦИАЛЬНАЯ АУДИТОРИЯ ]
