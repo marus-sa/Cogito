@@ -1,6 +1,6 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { Bell, Clock3, Mail, Palette, Pencil, Save, UserRound } from 'lucide-vue-next'
+import { Clock3, Mail, Palette, Pencil, Save, UserRound } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useMessagesStore } from '../stores/messages'
 import UserAvatar from '../components/UserAvatar.vue'
@@ -21,21 +21,6 @@ const form = reactive({
   time: auth.user.availableTime || '',
 })
 const colors = ['#b39ddb', '#9ebad5', '#a8cdbb', '#e2b9c7', '#e6c48e', '#9fc9c7']
-const defaultNotices = [
-  ['lessons', 'Напоминания о занятиях'],
-  ['homework', 'Новые домашние задания'],
-  ['reviews', 'Результаты проверки'],
-  ['messages', 'Новые сообщения'],
-  ['email', 'Уведомления по электронной почте'],
-]
-const savedPreferences = auth.user.notificationPreferences || {}
-const notices = reactive(
-  defaultNotices.map(([key, label]) => ({
-    key,
-    label,
-    on: savedPreferences[key] ?? (key !== 'email'),
-  })),
-)
 const details = computed(() => {
   let firstField = { label: 'Класс', value: form.grade || 'Не указан' }
   if (auth.roleKey === 'parent') {
@@ -66,27 +51,6 @@ async function save() {
   }
 }
 
-function notificationPayload() {
-  const preferences = {}
-  for (const notice of notices) {
-    preferences[notice.key] = notice.on
-  }
-  return preferences
-}
-
-async function saveNotificationPreferences() {
-  try {
-    await auth.updateProfile({ notificationPreferences: notificationPayload() })
-    messages.showToast('Настройки уведомлений сохранены')
-  } catch (error) {
-    const saved = auth.user.notificationPreferences || {}
-    notices.forEach((notice) => {
-      notice.on = saved[notice.key] ?? (notice.key !== 'email')
-    })
-    messages.showToast(error.message, 'error')
-  }
-}
-
 async function chooseAvatarColor(color) {
   try {
     await auth.updateProfile({ avatarColor: color })
@@ -103,7 +67,7 @@ async function chooseAvatarColor(color) {
     <div class="page-heading">
       <div>
         <h1>Профиль</h1>
-        <p>Ваши данные и настройки уведомлений.</p>
+        <p>Ваши данные.</p>
       </div>
       <BaseButton v-if="!editing" variant="outline" @click="editing = true">
         <Pencil :size="16" />
@@ -187,24 +151,6 @@ async function chooseAvatarColor(color) {
         </div>
       </section>
     </div>
-
-    <section class="card panel notice-settings">
-      <div class="section-title">
-        <div>
-          <h2>Настройки уведомлений</h2>
-          <p class="muted tiny">Выберите, о каких событиях нужно напоминать.</p>
-        </div>
-        <Bell :size="18" class="accent" />
-      </div>
-      <label v-for="notice in notices" :key="notice.key" class="toggle-row">
-        <span>
-          <b>{{ notice.label }}</b>
-          <small>{{ notice.on ? 'Уведомления включены' : 'Уведомления выключены' }}</small>
-        </span>
-        <input v-model="notice.on" type="checkbox" @change="saveNotificationPreferences" />
-        <i></i>
-      </label>
-    </section>
 
     <BaseModal v-model="avatarOpen" title="Оформление аватара">
       <p class="modal-copy">
@@ -327,58 +273,6 @@ async function chooseAvatarColor(color) {
   font-size: 9px;
   line-height: 1.4;
 }
-.notice-settings {
-  margin-top: 19px;
-  max-width: 760px;
-}
-.toggle-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 0;
-  border-top: 1px solid var(--border);
-  cursor: pointer;
-}
-.toggle-row span b,
-.toggle-row span small {
-  display: block;
-}
-.toggle-row span b {
-  font-size: 11px;
-}
-.toggle-row span small {
-  margin-top: 3px;
-  color: var(--text-secondary);
-  font-size: 9px;
-}
-.toggle-row input {
-  position: absolute;
-  opacity: 0;
-}
-.toggle-row i {
-  width: 35px;
-  height: 20px;
-  border-radius: 12px;
-  background: #d7d1dc;
-  transition: 0.2s;
-}
-.toggle-row i::after {
-  display: block;
-  width: 16px;
-  height: 16px;
-  margin: 2px;
-  background: #fff;
-  border-radius: 50%;
-  content: '';
-  transition: 0.2s;
-}
-.toggle-row input:checked + i {
-  background: var(--primary);
-}
-.toggle-row input:checked + i::after {
-  transform: translateX(15px);
-}
 .modal-copy {
   margin: 0;
   color: var(--text-secondary);
@@ -410,9 +304,6 @@ async function chooseAvatarColor(color) {
   }
   .profile-summary {
     max-width: none;
-  }
-  .notice-settings {
-    margin-top: 19px;
   }
 }
 </style>

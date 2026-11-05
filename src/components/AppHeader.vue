@@ -1,25 +1,21 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Menu, Search, CheckCheck, ArrowRight, X } from 'lucide-vue-next'
+import { Menu, Search, ArrowRight, X } from 'lucide-vue-next'
 import { navigation } from '../config'
 import AppIcon from './AppIcon.vue'
 import { useAuthStore } from '../stores/auth'
-import { useMessagesStore } from '../stores/messages'
 import UserAvatar from './UserAvatar.vue'
-import { countText, notificationPath } from '../helpers'
+import { countText } from '../helpers'
 
 defineEmits(['menu'])
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const messages = useMessagesStore()
-const notificationsOpen = ref(false)
 const searchOpen = ref(false)
 const search = ref('')
 
-const unread = computed(() => messages.notifications.filter((item) => !item.read).length)
 const title = computed(() => route.meta.title || 'Главная')
 const searchText = computed(() => search.value.trim().toLowerCase().replace(/ё/g, 'е'))
 const pages = computed(() => navigation.filter((item) => item.roles.includes(auth.roleKey)))
@@ -54,36 +50,7 @@ function clearSearch() {
 }
 
 function startSearch() {
-  notificationsOpen.value = false
   searchOpen.value = true
-}
-
-function toggleNotifications() {
-  searchOpen.value = false
-  notificationsOpen.value = !notificationsOpen.value
-}
-
-async function openNotification(notification) {
-  try {
-    if (!notification.read) await messages.markRead(notification.id)
-    notificationsOpen.value = false
-    router.push(notificationPath(notification, auth.roleKey))
-  } catch (error) {
-    messages.showToast(error.message, 'error')
-  }
-}
-
-async function readAll() {
-  try {
-    await messages.markAllRead()
-  } catch (error) {
-    messages.showToast(error.message, 'error')
-  }
-}
-
-function openAllNotifications() {
-  notificationsOpen.value = false
-  router.push('/notifications')
 }
 </script>
 
@@ -139,46 +106,6 @@ function openAllNotifications() {
             <p v-if="!searchResults.length" class="search-empty">
               Ничего не найдено. Попробуйте другое слово.
             </p>
-          </div>
-        </Transition>
-      </div>
-      <div class="notification-wrap">
-        <button class="bell" aria-label="Уведомления" @click="toggleNotifications">
-          <Bell :size="20" />
-          <span v-if="unread">{{ unread }}</span>
-        </button>
-        <Transition name="drop">
-          <div v-if="notificationsOpen" class="notification-panel">
-            <div class="notify-head">
-              <b>Уведомления</b>
-              <button @click="readAll">
-                <CheckCheck :size="15" />
-                Прочитать все
-              </button>
-            </div>
-            <button
-              v-for="item in messages.notifications.slice(0, 5)"
-              :key="item.id"
-              class="notification-item"
-              :class="{ unread: !item.read }"
-              @click="openNotification(item)"
-            >
-              <span :class="['notify-icon', item.tone]">
-                <AppIcon :name="item.icon" :size="16" />
-              </span>
-              <span>
-                <b>{{ item.title }}</b>
-                <small>{{ item.text }}</small>
-                <em>{{ item.time }}</em>
-              </span>
-            </button>
-            <p v-if="!messages.notifications.length" class="notification-empty">
-              Новых уведомлений пока нет.
-            </p>
-            <button class="all-notifications" @click="openAllNotifications">
-              Все уведомления
-              <ArrowRight :size="14" />
-            </button>
           </div>
         </Transition>
       </div>
@@ -352,37 +279,6 @@ function openAllNotifications() {
   font-size: 11px;
   text-align: center;
 }
-.bell {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border: 0;
-  border-radius: 11px;
-  color: #6d647a;
-  background: #fff;
-}
-.bell:hover {
-  color: var(--primary-dark);
-  background: var(--primary-extra-light);
-}
-.bell span {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  display: grid;
-  place-items: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  color: #fff;
-  background: #c97880;
-  border: 2px solid var(--background);
-  border-radius: 9px;
-  font-size: 9px;
-  font-weight: 800;
-}
 .user-menu {
   display: flex;
   align-items: center;
@@ -402,108 +298,6 @@ function openAllNotifications() {
   margin-top: 1px;
   color: var(--text-secondary);
   font-size: 10px;
-}
-.notification-wrap {
-  position: relative;
-}
-.notification-panel {
-  position: absolute;
-  top: 48px;
-  right: -6px;
-  width: 355px;
-  overflow: hidden;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-}
-.notify-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px 16px 11px;
-}
-.notify-head b {
-  font-size: 14px;
-}
-.notify-head button,
-.all-notifications {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 0;
-  color: var(--primary-dark);
-  background: transparent;
-  font-size: 11px;
-  font-weight: 800;
-}
-.notification-item {
-  display: flex;
-  gap: 9px;
-  width: 100%;
-  padding: 11px 16px;
-  border: 0;
-  color: var(--text-main);
-  background: #fff;
-  text-align: left;
-}
-.notification-item:hover {
-  background: #fbf9fe;
-}
-.notification-item.unread {
-  background: #faf8ff;
-}
-.notify-icon {
-  display: grid;
-  place-items: center;
-  width: 31px;
-  height: 31px;
-  border-radius: 9px;
-}
-.notify-icon.primary {
-  background: var(--primary-extra-light);
-  color: var(--primary-dark);
-}
-.notify-icon.success {
-  background: #e8f5ee;
-  color: #4d8967;
-}
-.notify-icon.warning {
-  background: #fcf3e5;
-  color: #a87d37;
-}
-.notification-item b,
-.notification-item small,
-.notification-item em {
-  display: block;
-}
-.notification-item b {
-  font-size: 11px;
-}
-.notification-item small {
-  margin-top: 2px;
-  color: var(--text-secondary);
-  font-size: 10px;
-  line-height: 1.35;
-}
-.notification-item em {
-  margin-top: 4px;
-  color: #9d94a8;
-  font-size: 9px;
-  font-style: normal;
-}
-.notification-empty {
-  margin: 0;
-  padding: 13px 16px;
-  color: var(--text-secondary);
-  font-size: 11px;
-  text-align: center;
-}
-.all-notifications {
-  justify-content: center;
-  width: 100%;
-  padding: 12px;
-  border-top: 1px solid var(--border);
 }
 .drop-enter-active,
 .drop-leave-active {
@@ -532,10 +326,6 @@ function openAllNotifications() {
   .header-actions {
     gap: 10px;
   }
-  .notification-panel {
-    right: -50px;
-    width: min(355px, calc(100vw - 30px));
-  }
 }
 @media (max-width: 430px) {
   .header {
@@ -546,12 +336,6 @@ function openAllNotifications() {
   }
   .header-actions {
     gap: 5px;
-  }
-  .bell {
-    background: transparent;
-  }
-  .notification-panel {
-    right: -46px;
   }
 }
 </style>

@@ -1,6 +1,5 @@
 <script setup>
 import {
-  Bell,
   BookOpenCheck,
   CalendarClock,
   CalendarDays,
@@ -25,7 +24,6 @@ defineProps({ name: String, size: { type: Number, default: 19 } })
 
 // Здесь перечислены только иконки, которые нужны приложению.
 const icons = {
-  Bell,
   BookOpenCheck,
   CalendarClock,
   CalendarDays,
@@ -48,5 +46,5 @@ const icons = {
 </script>
 
 <template>
-  <component :is="icons[name] || Bell" :size="size" />
+  <component :is="icons[name] || BookOpenCheck" :size="size" />
 </template>
