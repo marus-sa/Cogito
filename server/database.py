@@ -41,8 +41,7 @@ SCHEMA = [
         child_name TEXT,
         bio TEXT,
         email_verified_at TEXT,
-        avatar_color TEXT,
-        notification_preferences TEXT NOT NULL DEFAULT '{}'
+        avatar_color TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY,
@@ -100,16 +99,6 @@ SCHEMA = [
         sender_id INTEGER,
         text TEXT NOT NULL,
         sent_time TEXT NOT NULL,
-        is_read INTEGER DEFAULT 0
-    )""",
-    """CREATE TABLE IF NOT EXISTS notifications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        icon TEXT NOT NULL,
-        tone TEXT NOT NULL,
-        title TEXT NOT NULL,
-        text TEXT NOT NULL,
-        created_time TEXT NOT NULL,
         is_read INTEGER DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS review_lessons (
@@ -181,7 +170,6 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_lessons_student_id ON lessons(student_id)",
     "CREATE INDEX IF NOT EXISTS idx_lessons_tutor_id ON lessons(tutor_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_dialog_id ON messages(dialog_id)",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_student_tutors_tutor_id ON student_tutors(tutor_id)",
     "CREATE INDEX IF NOT EXISTS idx_homework_files_homework_id ON homework_files(homework_id)",
     "CREATE INDEX IF NOT EXISTS idx_admin_reset_authorizations_expires_at ON admin_password_reset_authorizations(expires_at)",
@@ -194,7 +182,6 @@ UPGRADE_COLUMNS = {
         "account_status": "TEXT NOT NULL DEFAULT 'active'",
         "email_verified_at": "TEXT",
         "avatar_color": "TEXT",
-        "notification_preferences": "TEXT NOT NULL DEFAULT '{}'",
     },
     "sessions": {"expires_at": "TEXT NOT NULL DEFAULT ''"},
     "lessons": {"student_id": "INTEGER", "tutor_id": "INTEGER"},
@@ -206,7 +193,6 @@ UPGRADE_COLUMNS = {
         "review_comment": "TEXT",
     },
     "messages": {"sender_id": "INTEGER"},
-    "notifications": {"user_id": "INTEGER"},
     "review_lessons": {"tutor_id": "INTEGER", "video_link": "TEXT"},
 }
 
@@ -271,14 +257,13 @@ def fix_old_message_times(db):
         "SELECT 1 FROM app_migrations WHERE migration_key = ?", (migration_key,)
     ).fetchone():
         return
-    for table, column in [("messages", "sent_time"), ("notifications", "created_time")]:
-        for row in db.execute(f"SELECT id, {column} FROM {table}").fetchall():
-            try:
-                old = datetime.strptime(row[column], "%H:%M")
-            except (TypeError, ValueError):
-                continue
-            updated = (old + timedelta(hours=3)).strftime("%H:%M")
-            db.execute(f"UPDATE {table} SET {column} = ? WHERE id = ?", (updated, row["id"]))
+    for row in db.execute("SELECT id, sent_time FROM messages").fetchall():
+        try:
+            old = datetime.strptime(row["sent_time"], "%H:%M")
+        except (TypeError, ValueError):
+            continue
+        updated = (old + timedelta(hours=3)).strftime("%H:%M")
+        db.execute("UPDATE messages SET sent_time = ? WHERE id = ?", (updated, row["id"]))
     db.execute(
         "INSERT INTO app_migrations (migration_key, applied_at) VALUES (?, ?)",
         (migration_key, datetime.now(timezone.utc).isoformat()),
@@ -332,8 +317,8 @@ def seed_production_admin(db):
     db.execute(
         """INSERT INTO users
         (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio,
-         email_verified_at, avatar_color, notification_preferences)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         email_verified_at, avatar_color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             "Администратор",
             "Cogito",
@@ -348,6 +333,5 @@ def seed_production_admin(db):
             "",
             datetime.now(timezone.utc).isoformat(),
             "",
-            "{}",
         ),
     )

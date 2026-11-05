@@ -191,8 +191,8 @@ def local_admin_setup():
             db.execute(
                 """INSERT INTO users
                 (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio,
-                 email_verified_at, avatar_color, notification_preferences)
-                VALUES (?, ?, ?, ?, 'admin', 'active', '', 'Управление проектом', '', '', '', ?, '', '{}')""",
+                 email_verified_at, avatar_color)
+                VALUES (?, ?, ?, ?, 'admin', 'active', '', 'Управление проектом', '', '', '', ?, '')""",
                 (
                     first_name,
                     last_name,

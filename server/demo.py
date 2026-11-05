@@ -21,7 +21,6 @@ def make_demo_user(first_name, last_name, email, role, grade="", subjects="", ti
         "",
         datetime.now(timezone.utc).isoformat(),
         "",
-        "{}",
     )
 
 
@@ -67,8 +66,8 @@ def seed_demo_data(db):
     db.executemany(
         """INSERT INTO users
         (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio,
-         email_verified_at, avatar_color, notification_preferences)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         email_verified_at, avatar_color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         demo_users,
     )
 
@@ -184,39 +183,6 @@ def seed_demo_data(db):
                 tutor_id,
                 "Отлично, разберём на занятии! Можешь прислать фото, если что-то не получается.",
                 "12:40",
-                1,
-            ),
-        ],
-    )
-    db.executemany(
-        """INSERT INTO notifications (user_id, icon, tone, title, text, created_time, is_read)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        [
-            (
-                student_id,
-                "CheckCircle2",
-                "success",
-                "Работа проверена",
-                "Мария Иванова проверила «Диагностическую работу».",
-                "20 минут назад",
-                0,
-            ),
-            (
-                student_id,
-                "CalendarClock",
-                "primary",
-                "Занятие завтра",
-                "Математика начнётся завтра в 18:00.",
-                "2 часа назад",
-                0,
-            ),
-            (
-                student_id,
-                "MessageCircle",
-                "warning",
-                "Новое сообщение",
-                "Мария Иванова написала вам в чате.",
-                "Сегодня, 12:40",
                 1,
             ),
         ],

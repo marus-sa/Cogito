@@ -1,7 +1,6 @@
 """Регистрация, вход, подтверждение почты и профиль."""
 
 import hashlib
-import json
 import os
 import re
 import secrets
@@ -200,27 +199,6 @@ def send_verification_email(user, token):
     return "sent"
 
 
-def notify_admins_about_verified_tutor(db, user):
-    """Показывает заявку только после подтверждения почты репетитора."""
-    admin_rows = db.execute(
-        "SELECT id FROM users WHERE role = 'admin' AND account_status = 'active'"
-    ).fetchall()
-    for admin in admin_rows:
-        db.execute(
-            """INSERT INTO notifications (user_id, icon, tone, title, text, created_time, is_read)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                admin["id"],
-                "UsersRound",
-                "warning",
-                "Новая заявка репетитора",
-                f"{full_name(user)} подтвердил(а) почту и ждёт проверки аккаунта.",
-                "Только что",
-                0,
-            ),
-        )
-
-
 @accounts.post("/api/auth/login")
 def login():
     data = get_data()
@@ -293,8 +271,8 @@ def register():
         db.execute(
             """INSERT INTO users
             (first_name, last_name, email, password_hash, role, account_status, grade, subjects, available_time, child_name, bio,
-             email_verified_at, avatar_color, notification_preferences)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', '{}')""",
+             email_verified_at, avatar_color)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '')""",
             (
                 data["firstName"].strip(),
                 data["lastName"].strip(),
@@ -390,8 +368,6 @@ def verify_email():
             return jsonify({"error": "Эта ссылка недействительна или уже устарела."}), 400
         db.execute("UPDATE users SET email_verified_at = ? WHERE id = ?", (now, row["user_id"]))
         user = db.execute("SELECT * FROM users WHERE id = ?", (row["user_id"],)).fetchone()
-        if user["role"] == "tutor" and user["account_status"] == "pending":
-            notify_admins_about_verified_tutor(db, user)
         db.commit()
     except Exception:
         db.rollback()
@@ -473,16 +449,6 @@ def profile():
     if not first_name or not last_name:
         return jsonify({"error": "Укажите имя и фамилию."}), 400
 
-    preferences = data.get("notificationPreferences")
-    if preferences is None:
-        preferences_json = g.user["notification_preferences"] or "{}"
-    elif isinstance(preferences, dict) and all(
-        isinstance(key, str) and isinstance(value, bool) for key, value in preferences.items()
-    ):
-        preferences_json = json.dumps(preferences, ensure_ascii=False)
-    else:
-        return jsonify({"error": "Проверьте настройки уведомлений."}), 400
-
     avatar_color = data.get("avatarColor", g.user["avatar_color"] or "")
     if not isinstance(avatar_color, str) or (
         avatar_color and not re.fullmatch(r"#[0-9a-fA-F]{6}", avatar_color)
@@ -492,7 +458,7 @@ def profile():
     try:
         db.execute(
             """UPDATE users SET first_name = ?, last_name = ?, grade = ?, subjects = ?,
-            available_time = ?, child_name = ?, bio = ?, avatar_color = ?, notification_preferences = ? WHERE id = ?""",
+            available_time = ?, child_name = ?, bio = ?, avatar_color = ? WHERE id = ?""",
             (
                 first_name,
                 last_name,
@@ -502,7 +468,6 @@ def profile():
                 child_name,
                 bio,
                 avatar_color,
-                preferences_json,
                 g.user["id"],
             ),
         )

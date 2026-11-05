@@ -1,4 +1,4 @@
-"""Контакты, диалоги, сообщения и уведомления."""
+"""Контакты, диалоги и сообщения."""
 
 from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
@@ -232,49 +232,8 @@ def messages():
         "INSERT INTO messages (dialog_id, sender, sender_id, text, sent_time, is_read) VALUES (?, 'me', ?, ?, ?, 0) RETURNING *",
         (dialog_id, g.user["id"], text, now),
     ).fetchone()
-    recipient_rows = db.execute(
-        "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?",
-        (dialog_id, g.user["id"]),
-    ).fetchall()
-    for recipient in recipient_rows:
-        db.execute(
-            """INSERT INTO notifications (user_id, icon, tone, title, text, created_time, is_read)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                recipient["user_id"],
-                "MessageCircle",
-                "primary",
-                "Новое сообщение",
-                f"{full_name(g.user)} написал(а) вам.",
-                now,
-                0,
-            ),
-        )
     db.commit()
     db.close()
     item = row_to_dict(row)
     item["sender"] = "me"
     return jsonify({"item": item}), 201
-
-
-@chat.route("/api/notifications", methods=["GET", "PATCH"])
-@need_login
-def notifications():
-    db = connect_db()
-    if request.method == "GET":
-        rows = db.execute(
-            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC", (g.user["id"],)
-        ).fetchall()
-        db.close()
-        return jsonify({"items": [row_to_dict(row) for row in rows]})
-    data = get_data()
-    if data.get("all"):
-        db.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (g.user["id"],))
-    elif data.get("id"):
-        db.execute(
-            "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
-            (data["id"], g.user["id"]),
-        )
-    db.commit()
-    db.close()
-    return jsonify({"ok": True})

@@ -1,6 +1,5 @@
 """Общие проверки доступа, сессии и преобразование данных."""
 
-import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from flask import g, jsonify, request
@@ -50,7 +49,6 @@ def row_to_dict(row):
     field_names = {
         "lesson_date": "date",
         "lesson_time": "time",
-        "created_time": "time",
         "sent_time": "time",
         "tutor_initials": "tutorInitials",
         "video_link": "videoLink",
@@ -63,7 +61,7 @@ def row_to_dict(row):
         if database_name not in item:
             continue
         value = item.pop(database_name)
-        if database_name in ["created_time", "sent_time"]:
+        if database_name == "sent_time":
             value = message_time(value)
         item[page_name] = value
     return item
@@ -268,11 +266,7 @@ def user_for_frontend(row):
     user["accountStatus"] = user.pop("account_status")
     user["emailVerified"] = bool(user.pop("email_verified_at", None))
     user["avatarColor"] = user.pop("avatar_color", None)
-    raw_preferences = user.pop("notification_preferences", "{}") or "{}"
-    try:
-        preferences = json.loads(raw_preferences)
-    except (TypeError, json.JSONDecodeError):
-        preferences = {}
-    user["notificationPreferences"] = preferences if isinstance(preferences, dict) else {}
+    # Поле могло остаться в старой базе, но клиенту оно больше не нужно.
+    user.pop("notification_preferences", None)
     user.pop("password_hash", None)
     return user

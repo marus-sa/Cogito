@@ -91,12 +91,37 @@ class AccountTests(unittest.TestCase):
         client, _ = sign_in("student")
         self.assertEqual(client.get("/api/auth/me").status_code, 200)
 
+    def test_disabled_notices_preserve_legacy_data(self):
+        db = database.connect_db()
+        tables = {row["name"] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        self.assertNotIn("notifications", tables)
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+        self.assertNotIn("notification_preferences", columns)
+        db.execute("CREATE TABLE notifications (id INTEGER PRIMARY KEY, text TEXT NOT NULL)")
+        db.execute("INSERT INTO notifications VALUES (1, 'Старая запись')")
+        db.execute("ALTER TABLE users ADD COLUMN notification_preferences TEXT NOT NULL DEFAULT '{}'")
+        db.commit()
+        db.close()
+        database.start_database()
+
+        for role in ACCOUNTS:
+            client, answer = sign_in(role)
+            self.assertNotIn("notificationPreferences", answer.json["user"])
+            self.assertNotIn("notification_preferences", answer.json["user"])
+            self.assertEqual(client.get("/api/notifications").status_code, 404)
+            self.assertEqual(client.patch("/api/notifications", json={"all": True}).status_code, 405)
+        tutor, _ = sign_in("tutor")
+        saved = tutor.put("/api/profile", json={"subjects": "Математика"})
+        self.assertEqual(saved.status_code, 200)
+        db = database.connect_db()
+        self.assertEqual(db.execute("SELECT text FROM notifications WHERE id = 1").fetchone()["text"], "Старая запись")
+        db.close()
+
     def test_database_fields_for_pages(self):
         row = {
             "id": 42, "subject": "Математика",
             "materials": 0, "video": 1, "shots": None, "is_read": 1,
             "lesson_date": "2026-11-04", "lesson_time": "17:00",
-            "created_time": "2026-11-04T14:15:00+00:00",
             "sent_time": "2026-11-04T14:30:00+00:00",
             "tutor_initials": "МИ", "video_link": "https://example.test/video",
             "submission_comment": "Мой ответ", "submission_link": "https://example.test/work",
@@ -114,7 +139,6 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(row, original)
         self.assertEqual(row_to_dict({}), {})
         self.assertEqual(row_to_dict({"lesson_time": "18:00"}), {"time": "18:00"})
-        self.assertEqual(row_to_dict({"created_time": "2026-11-04T14:15:00+00:00"}), {"time": "17:15"})
         self.assertEqual(row_to_dict({"sent_time": "старое время", "is_read": 0}), {
             "time": "старое время", "read": False,
         })
@@ -258,13 +282,11 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(tutor.get("/api/messages?dialog_id=1").json["items"][-1]["time"], "00:15")
         dialog = next(item for item in tutor.get("/api/conversations").json["items"] if item["id"] == 1)
         self.assertEqual(dialog["time"], "00:15")
-        self.assertEqual(tutor.get("/api/notifications").json["items"][0]["time"], "00:15")
 
     def test_old_chat_time_migration_runs_once(self):
         db = database.connect_db()
         db.execute("UPDATE messages SET sent_time = '23:45' WHERE id = 1")
         db.execute("UPDATE messages SET sent_time = '2026-11-04T21:15:00+00:00' WHERE id = 2")
-        db.execute("UPDATE notifications SET created_time = '23:45' WHERE id = 1")
         db.commit()
         db.close()
         with patch.dict(os.environ, {"FLASK_ENV": "production"}):
@@ -273,7 +295,6 @@ class AccountTests(unittest.TestCase):
         db = database.connect_db()
         self.assertEqual(db.execute("SELECT sent_time FROM messages WHERE id = 1").fetchone()["sent_time"], "02:45")
         self.assertEqual(db.execute("SELECT sent_time FROM messages WHERE id = 2").fetchone()["sent_time"], "2026-11-04T21:15:00+00:00")
-        self.assertEqual(db.execute("SELECT created_time FROM notifications WHERE id = 1").fetchone()["created_time"], "02:45")
         db.close()
 
     def test_all_roles_on_two_devices(self):

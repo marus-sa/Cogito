@@ -166,10 +166,7 @@ with TemporaryDirectory() as folder:
         .status_code
         == 200
     )
-    assert any(
-        item["title"] == "Новая заявка репетитора"
-        for item in admin.get("/api/notifications").json["items"]
-    )
+    assert admin.get("/api/notifications").status_code == 404
 
     new_student_client = login(app, "new.student@example.ru", "student", "long-enough-password")
     contacts = admin.get("/api/chat/contacts")
