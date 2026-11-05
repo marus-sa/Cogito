@@ -32,7 +32,7 @@ jobs:
           cp .env.example .env
           docker compose -p cogito-check build
           docker compose -p cogito-check run -d --service-ports --name cogito-check-app -e COGITO_DEMO_DATA=1 app
-          curl --fail --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 http://127.0.0.1:5000/api/health
+          curl --fail --retry 20 --retry-all-errors --retry-delay 1 --max-time 3 http://127.0.0.1:5000/api/health
           docker exec -i cogito-check-app python - <<'PY'
           import os
           import sqlite3
@@ -52,7 +52,7 @@ jobs:
           docker stop cogito-check-app
           docker rm cogito-check-app
           docker compose -p cogito-check run -d --service-ports --name cogito-check-app -e COGITO_DEMO_DATA=1 app
-          curl --fail --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 http://127.0.0.1:5000/api/health
+          curl --fail --retry 20 --retry-all-errors --retry-delay 1 --max-time 3 http://127.0.0.1:5000/api/health
           docker exec -i cogito-check-app python - <<'PY'
           import sqlite3
           from pathlib import Path
