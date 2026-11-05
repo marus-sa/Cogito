@@ -321,6 +321,11 @@
   color: var(--text-secondary);
   font-size: 11px;
 }
+.child-info {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .message-button {
   display: inline-flex;
   align-items: center;
@@ -334,22 +339,32 @@
   background: #fff;
   font-size: 11px;
   font-weight: 800;
+  flex-shrink: 0;
 }
 .message-button:hover {
   background: var(--primary-extra-light);
 }
-.child-summary .three-col > div {
+.child-details {
   display: grid;
-  gap: 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
 }
-.child-summary .three-col small {
+.child-details > div {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.child-details small {
   color: var(--text-secondary);
   font-size: 10px;
 }
-.child-summary .three-col b {
+.child-details b {
   font-size: 12px;
 }
-.child-summary .three-col span {
+.child-details span {
   color: var(--text-secondary);
   font-size: 10px;
 }
@@ -541,9 +556,12 @@ blockquote {
     flex-wrap: wrap;
   }
   .message-button {
-    margin: 3px 0 0 66px;
+    width: 100%;
+    justify-content: center;
+    margin: 3px 0 0;
   }
-  .child-summary .two-col {
+  .child-details {
+    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
   .subjects > div {

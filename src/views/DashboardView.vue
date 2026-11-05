@@ -359,7 +359,7 @@ onMounted(async () => {
       <section class="child-summary card panel">
         <div class="child-top">
           <UserAvatar :initials="initialsFromName(parentChild)" color="#b39ddb" :size="54" />
-          <div>
+          <div class="child-info">
             <span class="eyebrow">Мой ребёнок</span>
             <h2>{{ parentChild }}</h2>
             <p>{{ parentLesson?.subject || 'Предмет пока не назначен' }}</p>
@@ -369,7 +369,7 @@ onMounted(async () => {
             Написать репетитору
           </RouterLink>
         </div>
-        <div class="grid two-col">
+        <div class="child-details">
           <div>
             <small>Ближайшее занятие</small>
             <b>{{ parentLesson?.date || 'Пока нет' }} · {{ parentLesson?.time || '—' }}</b>
