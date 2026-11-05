@@ -14,20 +14,13 @@ async function loadApplications() {
     messages.showToast(error.message, 'error')
   }
 }
-async function approve(user) {
+async function reviewApplication(user, approved) {
+  const accountStatus = approved ? 'active' : 'blocked'
   try {
-    await api(`/admin/users/${user.id}`, { method: 'PATCH', body: { accountStatus: 'active' } })
+    await api(`/admin/users/${user.id}`, { method: 'PATCH', body: { accountStatus } })
     pendingTutors.value = pendingTutors.value.filter((item) => item.id !== user.id)
-    messages.showToast(`Заявка ${user.name} подтверждена`)
-  } catch (error) {
-    messages.showToast(error.message, 'error')
-  }
-}
-async function reject(user) {
-  try {
-    await api(`/admin/users/${user.id}`, { method: 'PATCH', body: { accountStatus: 'blocked' } })
-    pendingTutors.value = pendingTutors.value.filter((item) => item.id !== user.id)
-    messages.showToast(`Заявка ${user.name} отклонена`)
+    const result = approved ? 'подтверждена' : 'отклонена'
+    messages.showToast(`Заявка ${user.name} ${result}`)
   } catch (error) {
     messages.showToast(error.message, 'error')
   }
@@ -55,11 +48,11 @@ onMounted(loadApplications)
             <small>{{ user.email }} · {{ user.subjects || 'Предмет не указан' }}</small>
           </div>
           <div class="application-actions">
-            <BaseButton size="sm" :disabled="!user.emailVerified" @click="approve(user)">
+            <BaseButton size="sm" :disabled="!user.emailVerified" @click="reviewApplication(user, true)">
               <Check :size="15" />
               {{ user.emailVerified ? 'Подтвердить' : 'Почта не подтверждена' }}
             </BaseButton>
-            <BaseButton size="sm" variant="outline" @click="reject(user)">
+            <BaseButton size="sm" variant="outline" @click="reviewApplication(user, false)">
               <X :size="15" />
               Отклонить
             </BaseButton>

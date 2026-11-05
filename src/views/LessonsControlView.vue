@@ -30,21 +30,18 @@ function videoLink(item) {
   return safeLink(item?.videoLink)
 }
 
-const hasMaterials = (item) => Boolean(videoLink(item) || item.shots)
-const filtered = computed(() =>
-  lessons.reviewLessons.filter((item) => {
-    const statusMatches = status.value === 'Все статусы' || item.status === status.value
-    const materialMatches =
-      material.value === 'Все материалы' ||
-      (material.value === 'Есть материалы' ? hasMaterials(item) : !hasMaterials(item))
-    return (
-      statusMatches &&
-      materialMatches &&
-      (tutor.value === 'Все репетиторы' || item.tutor === tutor.value) &&
-      (student.value === 'Все ученики' || item.student === student.value)
-    )
-  }),
-)
+const filtered = computed(() => lessons.reviewLessons.filter(matchesFilters))
+
+function matchesFilters(item) {
+  if (status.value !== 'Все статусы' && item.status !== status.value) return false
+  if (tutor.value !== 'Все репетиторы' && item.tutor !== tutor.value) return false
+  if (student.value !== 'Все ученики' && item.student !== student.value) return false
+
+  const hasMaterials = Boolean(videoLink(item) || item.shots)
+  if (material.value === 'Все материалы') return true
+  if (material.value === 'Есть материалы') return hasMaterials
+  return !hasMaterials
+}
 function tagClass(item) {
   if (item.status === 'Проверено') return 'success'
   if (item.status === 'Нужно исправить' || item.status === 'Отклонено') return 'danger'
