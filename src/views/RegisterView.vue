@@ -217,7 +217,7 @@ function toAccount() {
           <div class="field">
             <label>Класс</label>
             <select v-model="form.grade">
-              <option v-for="grade in [5, 6, 7, 8, 9, 10, 11]" :key="grade">{{ grade }}</option>
+              <option v-for="grade in 11" :key="grade">{{ grade }}</option>
             </select>
           </div>
           <div class="field">

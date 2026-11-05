@@ -84,6 +84,31 @@ class AccountTests(unittest.TestCase):
         database.DATABASE_FILE = database.DATA_FOLDER / "cogito.db"
         database.start_database()
 
+    def test_registration_accepts_all_school_grades(self):
+        for grade in range(1, 12):
+            with self.subTest(grade=grade):
+                client = app.test_client()
+                email = f"grade{grade}@example.test"
+                with patch.object(accounts, "send_verification_email", return_value="sent") as send:
+                    registered = client.post("/api/auth/register", json={
+                        "firstName": "Тест",
+                        "lastName": "Ученик",
+                        "email": email,
+                        "password": "school-test-password",
+                        "role": "student",
+                        "grade": str(grade),
+                        "consent": True,
+                    })
+                    self.assertEqual(registered.status_code, 201)
+                    token = send.call_args.args[1]
+                confirmed = client.post("/api/auth/verify-email", json={"token": token})
+                self.assertEqual(confirmed.status_code, 200)
+                signed_in = client.post("/api/auth/login", json={
+                    "email": email, "password": "school-test-password",
+                })
+                self.assertEqual(signed_in.status_code, 200)
+                self.assertEqual(client.get("/api/profile").json["user"]["grade"], str(grade))
+
     def test_database_url_is_not_silently_ignored(self):
         with patch.dict(os.environ, {"DATABASE_URL": "unsupported://example.test/database"}):
             with self.assertRaisesRegex(RuntimeError, "DATABASE_URL"):
