@@ -9,8 +9,7 @@
 ## [ НАЗВАНИЕ ПРОЕКТА ]
 "Cogito"
 
-[Рабочий сайт](https://cogito-light-hearts-marussa.msk1.amvera.tech/) · [Код](https://github.com/marus-sa/Cogito) · [Пользовательские сценарии](final_scripts.md)
-
+[Рабочий сайт](https://cogito-light-hearts-marussa.msk1.amvera.tech/) 
 ## [ ЗАКАЗЧИК / ПОТЕНЦИАЛЬНАЯ АУДИТОРИЯ ]
 
 **Потенциальный заказчик:** глава проекта Light Hearts
