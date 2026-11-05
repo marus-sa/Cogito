@@ -27,6 +27,7 @@ database.DATA_FOLDER = Path(test_folder.name)
 database.DATABASE_FILE = database.DATA_FOLDER / "initial.db"
 import app as app_module
 import accounts
+from common import row_to_dict
 
 app = app_module.app
 app.config["TESTING"] = True
@@ -82,6 +83,34 @@ class AccountTests(unittest.TestCase):
         database.DATA_FOLDER = Path(test_folder.name) / self._testMethodName
         database.DATABASE_FILE = database.DATA_FOLDER / "cogito.db"
         database.start_database()
+
+    def test_database_fields_for_pages(self):
+        row = {
+            "id": 42, "subject": "Математика",
+            "materials": 0, "video": 1, "shots": None, "is_read": 1,
+            "lesson_date": "2026-11-04", "lesson_time": "17:00",
+            "created_time": "2026-11-04T14:15:00+00:00",
+            "sent_time": "2026-11-04T14:30:00+00:00",
+            "tutor_initials": "МИ", "video_link": "https://example.test/video",
+            "submission_comment": "Мой ответ", "submission_link": "https://example.test/work",
+            "review_comment": "Проверено",
+        }
+        original = row.copy()
+        self.assertEqual(row_to_dict(row), {
+            "id": 42, "subject": "Математика",
+            "materials": False, "video": True, "shots": False, "read": True,
+            "date": "2026-11-04", "time": "17:30", "tutorInitials": "МИ",
+            "videoLink": "https://example.test/video",
+            "submissionComment": "Мой ответ", "submissionLink": "https://example.test/work",
+            "reviewComment": "Проверено",
+        })
+        self.assertEqual(row, original)
+        self.assertEqual(row_to_dict({}), {})
+        self.assertEqual(row_to_dict({"lesson_time": "18:00"}), {"time": "18:00"})
+        self.assertEqual(row_to_dict({"created_time": "2026-11-04T14:15:00+00:00"}), {"time": "17:15"})
+        self.assertEqual(row_to_dict({"sent_time": "старое время", "is_read": 0}), {
+            "time": "старое время", "read": False,
+        })
 
     def test_database_restart_keeps_unmanaged_records(self):
         db = database.connect_db()

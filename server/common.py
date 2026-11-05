@@ -45,26 +45,27 @@ def row_to_dict(row):
     for key in ["materials", "video", "shots", "is_read"]:
         if key in item:
             item[key] = bool(item[key])
-    if "lesson_date" in item:
-        item["date"] = item.pop("lesson_date")
-    if "lesson_time" in item:
-        item["time"] = item.pop("lesson_time")
-    if "created_time" in item:
-        item["time"] = message_time(item.pop("created_time"))
-    if "sent_time" in item:
-        item["time"] = message_time(item.pop("sent_time"))
-    if "tutor_initials" in item:
-        item["tutorInitials"] = item.pop("tutor_initials")
-    if "video_link" in item:
-        item["videoLink"] = item.pop("video_link")
-    if "submission_comment" in item:
-        item["submissionComment"] = item.pop("submission_comment")
-    if "submission_link" in item:
-        item["submissionLink"] = item.pop("submission_link")
-    if "review_comment" in item:
-        item["reviewComment"] = item.pop("review_comment")
-    if "is_read" in item:
-        item["read"] = item.pop("is_read")
+
+    # Слева — имя поля в базе, справа — то же поле для страницы.
+    field_names = {
+        "lesson_date": "date",
+        "lesson_time": "time",
+        "created_time": "time",
+        "sent_time": "time",
+        "tutor_initials": "tutorInitials",
+        "video_link": "videoLink",
+        "submission_comment": "submissionComment",
+        "submission_link": "submissionLink",
+        "review_comment": "reviewComment",
+        "is_read": "read",
+    }
+    for database_name, page_name in field_names.items():
+        if database_name not in item:
+            continue
+        value = item.pop(database_name)
+        if database_name in ["created_time", "sent_time"]:
+            value = message_time(value)
+        item[page_name] = value
     return item
 
 
