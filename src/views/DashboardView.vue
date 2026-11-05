@@ -39,9 +39,10 @@ const studentTask = computed(
       deadline: '—',
     },
 )
-const upcoming = computed(
-  () => lessonsStore.lessons.find((item) => item.status === 'Запланировано') || null,
+const plannedLessons = computed(() =>
+  lessonsStore.lessons.filter((item) => item.status === 'Запланировано'),
 )
+const upcoming = computed(() => plannedLessons.value[0] || null)
 const reviewedHomework = computed(() =>
   homeworkStore.homework.filter((item) => item.status === 'Проверено'),
 )
@@ -73,27 +74,20 @@ const students = computed(() => {
   }
   return result
 })
-const tutorPlannedLessons = computed(() =>
-  lessonsStore.lessons.filter((item) => item.status === 'Запланировано'),
-)
 const tutorSubmittedHomework = computed(() =>
   homeworkStore.homework.filter((item) => item.status === 'Сданы'),
 )
-const tutorVerifiedReports = computed(() =>
+const verifiedReports = computed(() =>
   lessonsStore.reviewLessons.filter((item) => item.status === 'Проверено'),
 )
-const tutorVerifiedHours = computed(() => formatHours(sumReportMinutes(tutorVerifiedReports.value)))
+// Данные уже отобраны сервером по роли: каждому видны только доступные ему отчёты.
+const verifiedHours = computed(() => formatHours(sumReportMinutes(verifiedReports.value)))
 const mentorTutors = computed(
   () =>
     new Set(lessonsStore.reviewLessons.map((item) => item.tutorId || item.tutor).filter(Boolean)),
 )
 const mentorAwaitingReviews = computed(() =>
   lessonsStore.reviewLessons.filter((item) => item.status === 'Ожидает проверки'),
-)
-const mentorVerifiedHours = computed(() =>
-  formatHours(
-    sumReportMinutes(lessonsStore.reviewLessons.filter((item) => item.status === 'Проверено')),
-  ),
 )
 const mentorMissingMaterials = computed(() =>
   lessonsStore.reviewLessons.filter((item) => !item.video || !item.shots),
@@ -104,7 +98,8 @@ const shortPeople = (items) => {
   return names.join('; ')
 }
 const firstName = computed(() => auth.user?.name?.split(' ')[0] || 'друг')
-const roleCopy = computed(() => {
+const greeting = computed(() => `Здравствуйте, ${firstName.value}!`)
+const welcomeText = computed(() => {
   const text = {
     student: 'Сегодня отличный день, чтобы узнать что-то новое.',
     tutor: 'Здесь собраны ваши занятия, задания и сообщения учеников.',
@@ -112,14 +107,14 @@ const roleCopy = computed(() => {
     mentor: 'Здесь собраны занятия и отчёты вашей команды.',
     admin: 'Управляйте заявками и следите за работой проекта.',
   }
-  return [`Здравствуйте, ${firstName.value}!`, text[role.value] || 'Добро пожаловать в Cogito.']
+  return text[role.value] || 'Добро пожаловать в Cogito.'
 })
 const parentChild = computed(
   () => auth.user?.childName || lessonsStore.lessons[0]?.student || 'Ребёнок',
 )
 const parentLesson = computed(
   () =>
-    lessonsStore.lessons.find((item) => item.status === 'Запланировано') ||
+    upcoming.value ||
     lessonsStore.lessons[0] ||
     null,
 )
@@ -183,8 +178,8 @@ onMounted(async () => {
     <section class="welcome card">
       <div>
         <span class="date">{{ todayLabel }}</span>
-        <h1>{{ roleCopy[0] }}</h1>
-        <p>{{ roleCopy[1] }}</p>
+        <h1>{{ greeting }}</h1>
+        <p>{{ welcomeText }}</p>
       </div>
       <div class="welcome-orbit">
         <span><Sparkles :size="24" /></span>
@@ -313,13 +308,13 @@ onMounted(async () => {
         <StatCard
           label="Моих учеников"
           :value="students.length"
-          :detail="tutorPlannedLessons.length ? `${tutorPlannedLessons.length} запланировано` : ''"
+          :detail="plannedLessons.length ? `${plannedLessons.length} запланировано` : ''"
           icon="UsersRound"
         />
         <StatCard
           label="Подтверждённых часов"
-          :value="tutorVerifiedHours"
-          :detail="tutorVerifiedReports.length ? countText(tutorVerifiedReports.length, 'отчёт', 'отчёта', 'отчётов') : ''"
+          :value="verifiedHours"
+          :detail="verifiedReports.length ? countText(verifiedReports.length, 'отчёт', 'отчёта', 'отчётов') : ''"
           icon="Clock3"
           tone="green"
         />
@@ -331,7 +326,7 @@ onMounted(async () => {
         />
         <StatCard
           label="Запланировано занятий"
-          :value="tutorPlannedLessons.length"
+          :value="plannedLessons.length"
           icon="CalendarDays"
           tone="rose"
         />
@@ -342,7 +337,7 @@ onMounted(async () => {
             <h2>Запланированные занятия</h2>
             <RouterLink to="/schedule" class="link">Все занятия</RouterLink>
           </div>
-          <div v-for="item in tutorPlannedLessons.slice(0, 2)" :key="item.id" class="agenda">
+          <div v-for="item in plannedLessons.slice(0, 2)" :key="item.id" class="agenda">
             <span class="agenda-time">{{ item.time ? item.time.slice(0, 5) : '—' }}</span>
             <span class="agenda-line"></span>
             <div>
@@ -351,7 +346,7 @@ onMounted(async () => {
             </div>
             <RouterLink to="/schedule" class="outline-mini">Открыть</RouterLink>
           </div>
-          <p v-if="!tutorPlannedLessons.length" class="muted tiny empty-copy">
+          <p v-if="!plannedLessons.length" class="muted tiny empty-copy">
             Запланированных занятий пока нет.
           </p>
         </section>
@@ -502,7 +497,7 @@ onMounted(async () => {
         />
         <StatCard
           label="Подтверждённых часов"
-          :value="mentorVerifiedHours"
+          :value="verifiedHours"
           icon="Clock3"
           tone="green"
         />
