@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { api } from '../api.js'
 
 export const useMessagesStore = defineStore('messages', {
-  state: () => ({ messages: [], dialogs: [], contacts: [], notifications: [], toast: null }),
+  state: () => ({ messages: [], dialogs: [], contacts: [], toast: null }),
   actions: {
     async loadMessages(dialogId) {
       const data = await api(`/messages?dialog_id=${dialogId}`)
@@ -21,10 +21,6 @@ export const useMessagesStore = defineStore('messages', {
       await this.loadDialogs()
       return data.item
     },
-    async loadNotifications() {
-      const data = await api('/notifications')
-      this.notifications = data.items
-    },
     async send(dialogId, text) {
       const data = await api('/messages', { method: 'POST', body: { dialogId, text } })
       this.messages.push(data.item)
@@ -34,17 +30,6 @@ export const useMessagesStore = defineStore('messages', {
         dialog.time = data.item.time
         dialog.unread = 0
       }
-    },
-    async markAllRead() {
-      await api('/notifications', { method: 'PATCH', body: { all: true } })
-      this.notifications.forEach((item) => {
-        item.read = true
-      })
-    },
-    async markRead(id) {
-      await api('/notifications', { method: 'PATCH', body: { id } })
-      const item = this.notifications.find((note) => note.id === id)
-      if (item) item.read = true
     },
     showToast(text, type = 'success') {
       this.toast = { text, type, id: Date.now() }

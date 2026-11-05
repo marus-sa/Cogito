@@ -69,13 +69,6 @@ export function sumReportMinutes(reports) {
   return total
 }
 
-export function notificationPath(notification, role) {
-  if (notification.title === 'Новая заявка репетитора' && role === 'admin') {
-    return '/reports'
-  }
-  return '/notifications'
-}
-
 export function uniqueNames(items, field) {
   const names = []
   for (const item of items) {

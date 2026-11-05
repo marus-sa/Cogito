@@ -38,7 +38,6 @@ onMounted(async () => {
     await Promise.all([
       lessons.loadLessons(),
       homework.loadHomework(),
-      messages.loadNotifications(),
     ])
   } catch {
     messages.showToast('Не получилось обновить данные с сервера', 'error')

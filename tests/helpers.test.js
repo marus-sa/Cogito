@@ -100,7 +100,7 @@ test('Пустые формы сохраняют прежние поля и не
 test('Меню и поиск содержат только доступные разделы', () => {
   const routes = new Set([
     '/dashboard', '/users', '/schedule', '/homework', '/progress', '/chats',
-    '/hours', '/lessons-control', '/reports', '/profile', '/notifications', '/help',
+    '/hours', '/lessons-control', '/reports', '/profile', '/help',
   ])
   for (const role of Object.keys(roles)) {
     const pages = navigation.filter((page) => page.roles.includes(role))

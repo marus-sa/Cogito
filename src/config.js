@@ -111,15 +111,6 @@ export const navigation = [
     roles: ['admin'],
   },
   {
-    label: 'Уведомления',
-    to: '/notifications',
-    icon: 'Bell',
-    description: 'Все события кабинета',
-    keywords: 'события новые',
-    roles: ['student', 'tutor', 'parent', 'mentor', 'admin'],
-    sidebar: false,
-  },
-  {
     label: 'Профиль',
     to: '/profile',
     icon: 'UserRound',

@@ -14,7 +14,6 @@ import HoursView from './views/HoursView.vue'
 import LessonsControlView from './views/LessonsControlView.vue'
 import ReportsView from './views/ReportsView.vue'
 import ProfileView from './views/ProfileView.vue'
-import NotificationsView from './views/NotificationsView.vue'
 import UsersView from './views/UsersView.vue'
 import HelpView from './views/HelpView.vue'
 import MainLayout from './Layout.vue'
@@ -48,7 +47,6 @@ const routes = [
         meta: { title: 'Контроль занятий', roles: ['mentor', 'admin'] },
       },
       { path: 'reports', component: ReportsView, meta: { title: 'Заявки', roles: ['admin'] } },
-      { path: 'notifications', component: NotificationsView, meta: { title: 'Уведомления' } },
       { path: 'profile', component: ProfileView, meta: { title: 'Профиль' } },
       { path: 'users', component: UsersView, meta: { title: 'Участники', roles: ['admin'] } },
       { path: 'help', component: HelpView, meta: { title: 'Помощь' } },

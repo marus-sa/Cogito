@@ -1,8 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import {
-  ArrowRight,
   BookOpenCheck,
   CalendarDays,
   CheckCircle2,
@@ -23,10 +22,9 @@ import { api } from '../api'
 import StatCard from '../components/StatCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import UserAvatar from '../components/UserAvatar.vue'
-import { countText, formatHours, initialsFromName, notificationPath, sumReportMinutes, uniqueNames } from '../helpers'
+import { countText, formatHours, initialsFromName, sumReportMinutes, uniqueNames } from '../helpers'
 
 const auth = useAuthStore()
-const router = useRouter()
 const homeworkStore = useHomeworkStore()
 const lessonsStore = useLessonsStore()
 const messageStore = useMessagesStore()
@@ -146,23 +144,6 @@ const todayLabel = `${today[0].toUpperCase()}${today.slice(1)}`
 const subjectPercent = (count) =>
   subjectTotal.value ? Math.round((count / subjectTotal.value) * 100) : 0
 
-async function openNotification(note) {
-  try {
-    if (!note.read) await messageStore.markRead(note.id)
-    router.push(notificationPath(note, auth.roleKey))
-  } catch (error) {
-    messageStore.showToast(error.message, 'error')
-  }
-}
-
-async function markAllNotificationsRead() {
-  try {
-    await messageStore.markAllRead()
-  } catch (error) {
-    messageStore.showToast(error.message, 'error')
-  }
-}
-
 onMounted(async () => {
   if (auth.roleKey !== 'admin') return
   try {
@@ -187,7 +168,7 @@ onMounted(async () => {
     </section>
 
     <template v-if="role === 'student'">
-      <div class="grid two-col main-grid">
+      <div class="main-grid">
         <section class="stack">
           <article class="card panel next-lesson">
             <div class="section-title">
@@ -232,35 +213,6 @@ onMounted(async () => {
             <p v-else class="muted tiny empty-copy">Запланированных занятий пока нет.</p>
           </article>
         </section>
-        <aside class="card panel notifications">
-          <div class="section-title">
-            <h2>Уведомления</h2>
-            <button class="link" @click="markAllNotificationsRead">Прочитать</button>
-          </div>
-          <button
-            v-for="note in messageStore.notifications.slice(0, 4)"
-            :key="note.id"
-            class="note"
-            :class="{ unread: !note.read }"
-            @click="openNotification(note)"
-          >
-            <span :class="note.tone">
-              <CheckCircle2 v-if="note.tone === 'success'" :size="16" />
-              <CalendarDays v-else :size="16" />
-            </span>
-            <p>
-              <b>{{ note.title }}</b>
-              <small>{{ note.text }}</small>
-            </p>
-          </button>
-          <p v-if="!messageStore.notifications.length" class="muted tiny empty-copy">
-            Новых уведомлений пока нет.
-          </p>
-          <RouterLink to="/notifications" class="link notification-link">
-            Все уведомления
-            <ArrowRight :size="14" />
-          </RouterLink>
-        </aside>
       </div>
       <div class="grid two-col below">
         <article class="card panel">
@@ -633,32 +585,6 @@ onMounted(async () => {
           </p>
         </article>
       </div>
-      <section class="card panel below">
-        <div class="section-title">
-          <h2>Последние уведомления</h2>
-          <button class="link" @click="markAllNotificationsRead">Прочитать все</button>
-        </div>
-        <div v-if="messageStore.notifications.length">
-          <button
-            v-for="note in messageStore.notifications.slice(0, 4)"
-            :key="note.id"
-            class="activity notification-activity"
-            :class="{ unread: !note.read }"
-            @click="openNotification(note)"
-          >
-            <span><CheckCircle2 :size="17" /></span>
-            <p>
-              <b>{{ note.title }}</b>
-              <small>{{ note.text }}</small>
-            </p>
-          </button>
-        </div>
-        <p v-else class="muted tiny empty-copy">Новых уведомлений пока нет.</p>
-        <RouterLink to="/notifications" class="link notification-link">
-          Все уведомления
-          <ArrowRight :size="14" />
-        </RouterLink>
-      </section>
     </template>
   </div>
 </template>
