@@ -27,5 +27,42 @@ jobs:
       - run: server/.venv/bin/pip install -r server/requirements.txt
       - run: npm run test:api
       - run: npm run test:accounts
-      - name: Проверка контейнеризации
-        run: docker build --tag cogito:test .
+      - name: Проверка Docker и сохранения данных
+        run: |
+          cp .env.example .env
+          docker compose -p cogito-check build
+          docker compose -p cogito-check run -d --service-ports --name cogito-check-app -e COGITO_DEMO_DATA=1 app
+          curl --fail --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 http://127.0.0.1:5000/api/health
+          docker exec -i cogito-check-app python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          assert os.geteuid() != 0
+          folder = Path('/app/server/data')
+          db = sqlite3.connect(folder / 'cogito.db')
+          assert db.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 5
+          db.execute("INSERT INTO app_migrations VALUES ('docker-volume-test', 'test')")
+          db.commit()
+          db.close()
+          files = folder / 'homework-files'
+          files.mkdir(exist_ok=True)
+          (files / 'docker-check.txt').write_text('test-only')
+          PY
+          docker stop cogito-check-app
+          docker rm cogito-check-app
+          docker compose -p cogito-check run -d --service-ports --name cogito-check-app -e COGITO_DEMO_DATA=1 app
+          curl --fail --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 http://127.0.0.1:5000/api/health
+          docker exec -i cogito-check-app python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          folder = Path('/app/server/data')
+          db = sqlite3.connect(folder / 'cogito.db')
+          assert db.execute("SELECT 1 FROM app_migrations WHERE migration_key = 'docker-volume-test'").fetchone()
+          assert db.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 5
+          db.close()
+          assert (folder / 'homework-files' / 'docker-check.txt').read_text() == 'test-only'
+          PY
+          docker stop cogito-check-app
+          docker rm cogito-check-app
