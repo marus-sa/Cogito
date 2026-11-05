@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { CheckCircle2, CircleAlert, ExternalLink, FileVideo, Image, XCircle } from 'lucide-vue-next'
+import { CheckCircle2, CircleAlert, ExternalLink, FileVideo, XCircle } from 'lucide-vue-next'
 import { useLessonsStore } from '../stores/lessons'
 import { useMessagesStore } from '../stores/messages'
 import BaseButton from '../components/BaseButton.vue'
@@ -11,7 +11,7 @@ import { safeLink, uniqueNames } from '../helpers'
 const lessons = useLessonsStore()
 const messages = useMessagesStore()
 const status = ref('Все статусы')
-const material = ref('Все материалы')
+const material = ref('Все видео')
 const tutor = ref('Все репетиторы')
 const student = ref('Все ученики')
 const selected = ref(null)
@@ -37,10 +37,10 @@ function matchesFilters(item) {
   if (tutor.value !== 'Все репетиторы' && item.tutor !== tutor.value) return false
   if (student.value !== 'Все ученики' && item.student !== student.value) return false
 
-  const hasMaterials = Boolean(videoLink(item) || item.shots)
-  if (material.value === 'Все материалы') return true
-  if (material.value === 'Есть материалы') return hasMaterials
-  return !hasMaterials
+  const hasVideo = Boolean(videoLink(item))
+  if (material.value === 'Все видео') return true
+  if (material.value === 'Есть видео') return hasVideo
+  return !hasVideo
 }
 function tagClass(item) {
   if (item.status === 'Проверено') return 'success'
@@ -111,11 +111,11 @@ async function verify(result) {
           </select>
         </label>
         <label>
-          <span>Материалы</span>
+          <span>Видеозапись</span>
           <select v-model="material">
-            <option>Все материалы</option>
-            <option>Есть материалы</option>
-            <option>Нет материалов</option>
+            <option>Все видео</option>
+            <option>Есть видео</option>
+            <option>Нет видео</option>
           </select>
         </label>
       </div>
@@ -134,7 +134,7 @@ async function verify(result) {
               <th>Ученик</th>
               <th>Дата занятия</th>
               <th>Длительность</th>
-              <th>Материалы</th>
+              <th>Видеозапись</th>
               <th>Статус проверки</th>
               <th></th>
             </tr>
@@ -156,7 +156,7 @@ async function verify(result) {
               <td>
                 <span class="material-icons">
                   <FileVideo :size="16" :class="{ absent: !videoLink(item) }" />
-                  <Image :size="16" :class="{ absent: !item.shots }" />
+                  <span>{{ videoLink(item) ? 'Ссылка добавлена' : 'Нет ссылки' }}</span>
                 </span>
               </td>
               <td>
@@ -200,7 +200,7 @@ async function verify(result) {
             <p>{{ selected.comment }}</p>
           </template>
         </div>
-        <div class="files" aria-label="Материалы занятия">
+        <div class="files" aria-label="Видеозапись занятия">
           <div class="video-file" :class="{ missing: !videoLink(selected) }">
             <FileVideo :size="19" />
             <span>
@@ -227,13 +227,6 @@ async function verify(result) {
               <ExternalLink :size="14" />
               Открыть видео
             </a>
-          </div>
-          <div :class="{ missing: !selected.shots }">
-            <Image :size="19" />
-            <span>
-              <b>Скриншоты</b>
-              <small>{{ selected.shots ? 'Приложены к отчёту' : 'Не приложены' }}</small>
-            </span>
           </div>
         </div>
       </template>
@@ -284,8 +277,12 @@ async function verify(result) {
 }
 .material-icons {
   display: flex;
+  align-items: center;
   gap: 7px;
   color: #5d9f77;
+}
+.material-icons svg {
+  flex-shrink: 0;
 }
 .material-icons .absent {
   color: #c78b8b;

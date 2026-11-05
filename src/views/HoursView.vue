@@ -1,6 +1,6 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { CheckCircle2, Clock3, FileVideo, Image, Plus, Upload } from 'lucide-vue-next'
+import { CheckCircle2, Clock3, FileVideo, Plus, Upload } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useLessonsStore } from '../stores/lessons'
 import { useMessagesStore } from '../stores/messages'
@@ -110,7 +110,7 @@ async function submit() {
               <th>Занятие</th>
               <th>Дата</th>
               <th>Длительность</th>
-              <th>Материалы</th>
+              <th>Видеозапись</th>
               <th>Статус</th>
             </tr>
           </thead>
@@ -126,16 +126,9 @@ async function submit() {
               </td>
               <td>
                 <span class="materials">
-                  <FileVideo :size="14" :class="{ missing: !item.videoLink }" />
-                  <Image :size="14" :class="{ missing: !item.shots }" />
+                  <FileVideo :size="14" :class="{ missing: !safeLink(item.videoLink) }" />
                   <small>
-                    {{
-                      item.videoLink
-                        ? 'Видео по ссылке'
-                        : item.shots
-                          ? 'Скриншоты отмечены'
-                          : 'Не отмечены'
-                    }}
+                    {{ safeLink(item.videoLink) ? 'Видео по ссылке' : 'Ссылка не добавлена' }}
                   </small>
                 </span>
               </td>

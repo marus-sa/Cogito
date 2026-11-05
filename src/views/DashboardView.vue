@@ -22,7 +22,7 @@ import { api } from '../api'
 import StatCard from '../components/StatCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import UserAvatar from '../components/UserAvatar.vue'
-import { countText, formatHours, initialsFromName, sumReportMinutes, uniqueNames } from '../helpers'
+import { countText, formatHours, initialsFromName, safeLink, sumReportMinutes, uniqueNames } from '../helpers'
 
 const auth = useAuthStore()
 const homeworkStore = useHomeworkStore()
@@ -87,8 +87,8 @@ const mentorTutors = computed(
 const mentorAwaitingReviews = computed(() =>
   lessonsStore.reviewLessons.filter((item) => item.status === 'Ожидает проверки'),
 )
-const mentorMissingMaterials = computed(() =>
-  lessonsStore.reviewLessons.filter((item) => !item.video || !item.shots),
+const mentorMissingVideo = computed(() =>
+  lessonsStore.reviewLessons.filter((item) => !safeLink(item.videoLink)),
 )
 const shortPeople = (items) => {
   const names = items.slice(0, 2).map((item) => `${item.tutor} · ${item.student}`)
@@ -454,8 +454,8 @@ onMounted(async () => {
           tone="green"
         />
         <StatCard
-          label="Без материалов"
-          :value="mentorMissingMaterials.length"
+          label="Без видеозаписи"
+          :value="mentorMissingVideo.length"
           icon="CircleAlert"
           tone="rose"
         />
@@ -499,11 +499,11 @@ onMounted(async () => {
         </section>
         <section class="card panel">
           <div class="section-title"><h2>Требуют внимания</h2></div>
-          <div v-if="mentorMissingMaterials.length" class="issue">
+          <div v-if="mentorMissingVideo.length" class="issue">
             <span><FileCheck2 :size="18" /></span>
             <div>
-              <b>Не все материалы приложены</b>
-              <small>{{ shortPeople(mentorMissingMaterials) }}</small>
+              <b>Не добавлена ссылка на видео</b>
+              <small>{{ shortPeople(mentorMissingVideo) }}</small>
             </div>
             <RouterLink class="link" to="/lessons-control">Проверить</RouterLink>
           </div>
@@ -516,7 +516,7 @@ onMounted(async () => {
             <RouterLink class="link" to="/lessons-control">Открыть</RouterLink>
           </div>
           <p
-            v-if="!mentorMissingMaterials.length && !mentorAwaitingReviews.length"
+            v-if="!mentorMissingVideo.length && !mentorAwaitingReviews.length"
             class="muted tiny empty-copy"
           >
             Ничего не требует внимания.
