@@ -18,23 +18,6 @@ os.environ.pop("SMTP_HOST", None)
 os.environ.pop("SMTP_PASSWORD", None)
 
 
-postgres_sessions_schema = next(
-    statement
-    for statement in database.POSTGRES_SCHEMA
-    if "CREATE TABLE IF NOT EXISTS sessions" in statement
-)
-assert "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" in postgres_sessions_schema
-assert "created_at TEXT DEFAULT CURRENT_TIMESTAMP" not in postgres_sessions_schema
-assert any(
-    "CREATE TABLE IF NOT EXISTS admin_password_reset_tokens" in statement
-    for statement in database.POSTGRES_SCHEMA
-)
-assert any(
-    "CREATE TABLE IF NOT EXISTS admin_password_reset_authorizations" in statement
-    for statement in database.POSTGRES_SCHEMA
-)
-
-
 def login(app, email, role, password="cogito123"):
     client = app.test_client()
     answer = client.post(

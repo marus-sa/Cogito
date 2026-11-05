@@ -84,6 +84,13 @@ class AccountTests(unittest.TestCase):
         database.DATABASE_FILE = database.DATA_FOLDER / "cogito.db"
         database.start_database()
 
+    def test_database_url_is_not_silently_ignored(self):
+        with patch.dict(os.environ, {"DATABASE_URL": "unsupported://example.test/database"}):
+            with self.assertRaisesRegex(RuntimeError, "DATABASE_URL"):
+                database.connect_db()
+        client, _ = sign_in("student")
+        self.assertEqual(client.get("/api/auth/me").status_code, 200)
+
     def test_database_fields_for_pages(self):
         row = {
             "id": 42, "subject": "Математика",

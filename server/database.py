@@ -1,8 +1,4 @@
-"""Хранение данных Cogito.
-
-Локально проект можно запустить с SQLite. На хостинге передайте DATABASE_URL
-от PostgreSQL — остальной код сервера останется таким же.
-"""
+"""Таблицы и подключение к SQLite. База находится в server/data/cogito.db."""
 
 from demo import seed_demo_data
 import os
@@ -17,42 +13,9 @@ DATA_FOLDER = ROOT / "data"
 DATABASE_FILE = DATA_FOLDER / "cogito.db"
 
 
-class PostgresDatabase:
-    """Маленький переходник: приложение пишет запросы привычно, с ?."""
-
-    def __init__(self, url):
-        from psycopg import connect
-        from psycopg.rows import dict_row
-
-        self.connection = connect(url, row_factory=dict_row)
-
-    def execute(self, query, params=()):
-        return self.connection.execute(query.replace("?", "%s"), params)
-
-    def executemany(self, query, params):
-        cursor = self.connection.cursor()
-        cursor.executemany(query.replace("?", "%s"), params)
-        cursor.close()
-
-    def commit(self):
-        self.connection.commit()
-
-    def rollback(self):
-        self.connection.rollback()
-
-    def close(self):
-        self.connection.close()
-
-
-def is_postgres():
-    return bool(os.environ.get("DATABASE_URL"))
-
-
 def connect_db():
-    database_url = os.environ.get("DATABASE_URL")
-    if database_url:
-        return PostgresDatabase(database_url)
-
+    if os.environ.get("DATABASE_URL"):
+        raise RuntimeError("Cogito использует только SQLite. Удалите DATABASE_URL из настроек запуска.")
     DATA_FOLDER.mkdir(exist_ok=True)
     db = sqlite3.connect(DATABASE_FILE)
     db.row_factory = sqlite3.Row
@@ -63,9 +26,7 @@ def is_production():
     return os.environ.get("FLASK_ENV") == "production"
 
 
-
-
-SQLITE_SCHEMA = [
+SCHEMA = [
     """CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         first_name TEXT NOT NULL,
@@ -211,20 +172,6 @@ SQLITE_SCHEMA = [
 ]
 
 
-def postgres_schema_statement(statement):
-    """Переводит общую SQLite-схему в синтаксис PostgreSQL.
-
-    Большинство типов в нашей небольшой схеме совпадают. Но PostgreSQL не
-    разрешает назначать TIMESTAMP-выражение CURRENT_TIMESTAMP колонке типа
-    TEXT, поэтому это отличие нельзя оставлять простой заменой AUTOINCREMENT.
-    """
-    return statement.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY").replace(
-        "created_at TEXT DEFAULT CURRENT_TIMESTAMP",
-        "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    )
-POSTGRES_SCHEMA = [postgres_schema_statement(statement) for statement in SQLITE_SCHEMA]
-
-
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)",
@@ -266,12 +213,6 @@ UPGRADE_COLUMNS = {
 
 def upgrade_old_database(db):
     """Добавляет новые поля в старую локальную базу без удаления данных."""
-    if is_postgres():
-        for table, columns in UPGRADE_COLUMNS.items():
-            for column, definition in columns.items():
-                db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
-        return
-
     for table, columns in UPGRADE_COLUMNS.items():
         known = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
         for column, definition in columns.items():
@@ -346,8 +287,7 @@ def fix_old_message_times(db):
 
 def start_database():
     db = connect_db()
-    schema = POSTGRES_SCHEMA if is_postgres() else SQLITE_SCHEMA
-    for statement in schema:
+    for statement in SCHEMA:
         db.execute(statement)
     upgrade_old_database(db)
     mark_existing_users_as_verified(db)
@@ -366,12 +306,10 @@ def start_database():
     db.close()
 
 
-
-
 def seed_production_admin(db):
     """Создаёт первого администратора только в новой боевой базе.
 
-    Пароль приходит из переменной окружения Render и никогда не попадает
+    Пароль приходит из настроек хостинга и никогда не попадает
     в репозиторий или в базу в открытом виде.
     """
     has_admin = db.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1").fetchone()
